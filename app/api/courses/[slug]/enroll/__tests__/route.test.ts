@@ -7,9 +7,12 @@ import {
 import { AUTH_URL, PAY_URL, installFakeKernel } from '@test/kernel';
 import { POST } from '../route';
 
-vi.mock('@/lib/signing-identity', () => ({
-  getSigningIdentity: () => ({ appDid: 'did:imajin:app', privateKey: '11'.repeat(32), publicKey: null }),
-}));
+vi.mock('@/lib/signing-identity', async () => {
+  // A throwaway key generated per run — no key material is committed.
+  const { generatePrivateKey } = await import('@ima-jin/auth');
+  const privateKey = generatePrivateKey();
+  return { getSigningIdentity: () => ({ appDid: 'did:imajin:app', privateKey, publicKey: null }) };
+});
 
 const kernel = installFakeKernel();
 const ctx = params({ slug: 'intro' });

@@ -183,17 +183,26 @@ Full text: `ima-jin/conventions/ISSUE-CONVENTIONS.md`. This §7 is kept in sync 
 - **What it is:** Learn — courses, modules, lessons, enrollments and per-lesson progress, rebuilt as a standalone
   registered app (ima-jin/imajin-ai#1987, previously `apps/learn` inside the monorepo).
 - **App DID:** _pending registration (#1987 later step)_ — set via `IMAJIN_APP_DID`, never committed
-- **Scopes:** _pending registration_ — declared at registration time, not guessed here
+- **Scopes:** none required by the routes today. Callers authenticate through a single `authenticate()` interface
+  (`src/lib/auth/authenticate.ts`, `requireSessionOrAppToken` from the published `@ima-jin/auth`) and the app enforces
+  ownership itself (a course's `creatorDid` must equal the caller's DID). `authenticate()` accepts `requireScopes` so a
+  route can demand a scope the day registration declares one — declared at registration time, not guessed here.
 - **Domain:** learn.imajin.ai (prod) / dev-learn.imajin.ai (dev) — deploy wiring is a later step of #1987
 - **Database:** Postgres schema `learn` (`APP_DB_SCHEMA=learn`), five tables — `courses`, `modules`, `lessons`,
   `enrollments`, `lesson_progress` — owned by this repo's `migrations/` (see `docs/MIGRATIONS.md`). The tables were
   ported column-for-column from the kernel's shared migrations; the kernel no longer owns them.
 - **The real-world loop it instruments:** creator publishes a course → student enrolls (free, or paid via the
   kernel's settlement leg) → student completes lessons; completion is the record.
-- **Domain events it emits (via kernel API):** none yet — added with the route port in later steps.
-- **Connectors it consumes:** none.
+- **Domain events it emits (via kernel API):** `learn.enrolled` (free enrollment) and `learn.completed` (last lesson
+  done), as app-signed attestations delegated by the student through the kernel's public
+  `POST /auth/api/attestations` (`src/lib/events.ts`, `submitDelegatedAttestation`). Best-effort: needs the caller's
+  app token and the student's `attest:<appId>:<type>` delegation grant, and never fails the request that triggered it.
+- **Connectors it consumes:** none. Kernel services called over their public routes: auth (token verify, attestations),
+  pay (checkout), registry (`node/self` fee config), profile (batched DID resolve, no credential).
 - **Scope guardrails specific to this app:**
   - Do not read or write `profile`, `auth`, `registry`, `pay` or any other schema — resolve DIDs/profiles/payments
     through the kernel's public API.
   - Do not import `@imajin/db` or any `apps/**` source; the only `@ima-jin/*` packages allowed are the published ones.
   - Never change `APP_DB_SCHEMA` after first migrate.
+  - Never call `@ima-jin/auth`'s auth primitives directly from a route — always go through `authenticate()` /
+    `authenticateOptional()`. Browser code reaches this app's API only through `learnFetch()` (`src/lib/api-client.ts`).

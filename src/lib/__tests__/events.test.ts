@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { generatePrivateKey } from '@ima-jin/auth';
 import { emitLearnEvent, type LearnEventInput } from '../events';
 import { getSigningIdentity } from '../signing-identity';
 import { AUTH_URL, installFakeKernel } from '@test/kernel';
@@ -17,7 +18,7 @@ const input = (appToken: string | null): LearnEventInput => ({
 });
 
 beforeEach(() => {
-  vi.mocked(getSigningIdentity).mockReturnValue({ appDid: 'did:imajin:app', privateKey: '22'.repeat(32), publicKey: null });
+  vi.mocked(getSigningIdentity).mockReturnValue({ appDid: 'did:imajin:app', privateKey: generatePrivateKey(), publicKey: null });
 });
 
 describe('emitLearnEvent', () => {

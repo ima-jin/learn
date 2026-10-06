@@ -28,8 +28,49 @@ ship; this convention only fixes the shape (one pm2 entry, one Caddy route) so i
 
 ## The loop this app instruments
 
-_<Describe the real-world loop: who hands what to whom, which single leg is paid (`.fair`), and how the gesture becomes
-a signed record without adding friction.>_
+A creator publishes a course (modules → lessons). A student enrolls — free, or paid through the kernel's pay service
+(`POST {pay}/api/checkout`, the seller being the course creator) — and completes lessons one by one. Completing the last
+lesson completes the course. Enrollment and completion are the record: each is emitted as a signed attestation
+(`learn.enrolled`, `learn.completed`) through the kernel's public attestation API, delegated by the student.
+
+## Auth: the registered-app contract, end to end
+
+- **Server routes** call `authenticate()` / `authenticateOptional()` (`src/lib/auth/authenticate.ts`) — one wrapper around
+  `requireSessionOrAppToken`. A scoped app token (`Authorization: Bearer`) is verified by the kernel for **this app's host
+  as `aud`**; a token minted for another app is rejected. The kernel session cookie is accepted only as the migration
+  fallback and carries no scopes. A caller is a single DID.
+- **Browser pages** call the API through `learnFetch()` (`src/lib/api-client.ts`), which mints a short-lived app token
+  from the visitor's kernel session and sends it as a bearer (anonymous when there is no session).
+- **Domain events** go out through `submitDelegatedAttestation` with the caller's token and this app's own signing key
+  (`loadAppSigningKey()` at boot). No in-process bus, no kernel secret.
+
+## Parity with the in-monorepo `apps/learn`
+
+Every route (`/api/courses/**`, `/api/my/*`, health, spec) and page (`/`, `/[handle]`, `/course/**`, `/dashboard/**`)
+is ported with the same URLs, request/response shapes and status codes. Differences, all forced by the app-token
+contract or fixes to defects in the original:
+
+- **No act-as / tier.** The app-token contract carries only a DID, so `X-Acting-As` group identity (and the .fair
+  scope-fee lookup that depended on it) and the soft-vs-hard-DID gate on writes are gone — callers always act as
+  themselves. Tracked kernel-side: ima-jin/imajin-ai#2639 (act-as), #2640 (tier).
+- **Student emails are not released.** The roster resolves handle/display name through the kernel profile service
+  *without* a service-scope credential, so `email` is always `null` (learn holds no kernel secret).
+- **Events** are emitted as delegated, app-signed attestations (issuer = this app, delegator/subject = the student, the
+  creator in the payload) instead of an in-process `publish()`. They only fire for token-authenticated callers who have
+  granted the app the `attest:<appId>:<type>` delegation. Related: ima-jin/imajin-ai#2641.
+- **`<OnboardGate>` → "Sign in with Imajin".** `@ima-jin/onboard` is not on npm (ima-jin/imajin-ai#2646).
+- **No `middleware.ts`.** The kernel's `/dashboard` → hub-tab redirect and CORS pass-through are kernel-hosting
+  concerns; this app serves its own dashboard.
+- **Hardening** (each covered by a test): lesson/module reads, edits, deletes and reorders are scoped to the course in the
+  URL (the original let a creator of *any* course edit/reorder another's lessons, and read a paid course's lesson
+  content through a free course's URL); private courses' modules/lessons are hidden from non-creators like the course
+  itself; paid-course lesson listings are locked like the single-lesson route; malformed JSON is a 400, not a 500;
+  `limit`/`offset` tolerate garbage; PATCHing `imageUrl` / `imageAssetId` / `eventSlug` / `courseType` now actually
+  persists (the original wrote snake_case keys drizzle silently ignores); the unimplemented `tag` filter is no longer
+  advertised in the spec.
+- **Known gap carried over, not introduced here:** a paid checkout's `successUrl` defaults to
+  `/api/courses/{slug}/enroll/callback`, which has never existed in either codebase, and nothing creates the enrollment
+  after payment. Out of scope for a parity port.
 
 ## Open decisions
 

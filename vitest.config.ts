@@ -2,6 +2,8 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  // JSX in .tsx tests: the automatic runtime, as Next.js compiles it.
+  esbuild: { jsx: 'automatic' },
   resolve: {
     alias: [
       // Route tests run real SQL: the exact `@/db` import resolves to an
@@ -28,7 +30,7 @@ export default defineConfig({
       REGISTRY_SERVICE_URL: 'https://kernel.test/registry',
       PROFILE_SERVICE_URL: 'https://kernel.test/profile',
     },
-    include: ['**/__tests__/**/*.test.ts'],
+    include: ['**/__tests__/**/*.test.{ts,tsx}'],
     exclude: ['node_modules/**', '.next/**'],
     server: {
       // Otherwise vitest hands @ima-jin/auth-client's ESM import of
