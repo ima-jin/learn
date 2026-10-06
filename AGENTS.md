@@ -182,12 +182,15 @@ Full text: `ima-jin/conventions/ISSUE-CONVENTIONS.md`. This §7 is kept in sync 
 
 - **What it is:** Learn — courses, modules, lessons, enrollments and per-lesson progress, rebuilt as a standalone
   registered app (ima-jin/imajin-ai#1987, previously `apps/learn` inside the monorepo).
-- **App DID:** _pending registration (#1987 later step)_ — set via `IMAJIN_APP_DID`, never committed
+- **App DID:** one per environment, minted through the kernel's claim flow (`docs/REGISTRATION.md`) — set via
+  `IMAJIN_APP_DID`, never committed
 - **Scopes:** none required by the routes today. Callers authenticate through a single `authenticate()` interface
   (`src/lib/auth/authenticate.ts`, `requireSessionOrAppToken` from the published `@ima-jin/auth`) and the app enforces
   ownership itself (a course's `creatorDid` must equal the caller's DID). `authenticate()` accepts `requireScopes` so a
   route can demand a scope the day registration declares one — declared at registration time, not guessed here.
-- **Domain:** learn.imajin.ai (prod) / dev-learn.imajin.ai (dev) — deploy wiring is a later step of #1987
+- **Domain:** Caddy path route `/learn` on the kernel host — https://jin.imajin.ai/learn (prod, pm2 `prod-learn`, port 7103) /
+  https://dev-jin.imajin.ai/learn (dev, pm2 `dev-learn`, port 3103). Deploy: `scripts/deploy.sh <dev|prod>`, see
+  `docs/DEPLOY.md`; every env var: `docs/ENVIRONMENTS.md`.
 - **Database:** Postgres schema `learn` (`APP_DB_SCHEMA=learn`), five tables — `courses`, `modules`, `lessons`,
   `enrollments`, `lesson_progress` — owned by this repo's `migrations/` (see `docs/MIGRATIONS.md`). The tables were
   ported column-for-column from the kernel's shared migrations; the kernel no longer owns them.

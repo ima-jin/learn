@@ -96,6 +96,30 @@ If the local keystore is ever lost (disk wipe, redeploy to a fresh host), ask th
 to re-approve `apps.provision` with `reissueClaim: true` for a fresh claim code — redeeming it also
 revokes the lost keystore's bootstrap key. See `@ima-jin/auth-client`'s README for the full API.
 
+## Minting the app identity (operator runbook)
+
+learn is registered **once per environment** — dev and prod each get their own app DID, registry id, claim code and
+keystore. Nothing is minted on the server by hand and no key material is ever written to `.env.local` or a log.
+
+1. **Register** (section 1) against that environment's kernel (`https://dev-jin.imajin.ai` or `https://jin.imajin.ai`)
+   with `callbackUrl` = `<NEXT_PUBLIC_APP_URL>/api/auth/callback` (`https://jin.imajin.ai/learn/api/auth/callback`
+   on prod). Do **not** supply or keep the returned `keypair` anywhere in this repo. Record `appDid` and the registry
+   `id` (`app_…`), and make sure the app's host (`jin.imajin.ai` / `dev-jin.imajin.ai`) is in its `tokenAudiences`.
+2. **Mint the claim code** on the kernel's `/jin` operator dashboard: open the app's `apps.provision` approval card
+   and approve it. That produces a **one-time claim code**, shown once. (Lost keystore later? Approve again with
+   `reissueClaim: true`; redeeming the new code revokes the old keystore's bootstrap key.)
+3. **Fill `.env.local`** from `.env.dev.example` / `.env.prod.example`: `IMAJIN_APP_DID` = `appDid`,
+   `NEXT_PUBLIC_IMAJIN_APP_ID` = the registry `id`, `IMAJIN_APP_CLAIM_CODE` = the code, `IMAJIN_APP_KEYSTORE` = a
+   per-environment path outside the checkout (`/home/jin/.imajin/learn.<env>.keystore.json`).
+4. **Deploy** (`scripts/deploy.sh <dev|prod>`, [DEPLOY.md](./DEPLOY.md)). The first boot spends the claim code via
+   `loadAppSigningKey()` and persists only the 0600 bootstrap keystore.
+5. **Delete `IMAJIN_APP_CLAIM_CODE`** from `.env.local` (`check-env` warns while it is set). Every later boot
+   re-authenticates with the keystore alone — back the keystore up like a credential, never commit or copy it.
+
+> **Claim page.** learn does not yet have the in-app `/claim` page that `links` has (where the operator pastes the code
+> in a browser instead of editing the env file). Until a later step ports it, the claim code goes through
+> `IMAJIN_APP_CLAIM_CODE` as above. The kernel side (`/jin` card → claim code → app DID + keystore) is identical.
+
 ## 5. List or manage your apps later
 
 ```bash

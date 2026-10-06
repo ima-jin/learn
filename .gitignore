@@ -16,3 +16,6 @@ npm-debug.log*
 tsconfig.tsbuildinfo
 coverage/
 .vercel
+
+# Local bootstrap keystore (0600) — never commit key material
+.imajin/
