@@ -198,3 +198,8 @@ jobs:
           name: sonar-payload
           path: /tmp/sonar-payload
           retention-days: 1
+          # upload-artifact@v4 skips dotfiles by default, which silently dropped
+          # .sonar-pr-meta.json — the privileged SonarCloud job then ran with an
+          # empty PR key and scanned a branch instead of the pull request.
+          include-hidden-files: true
+          if-no-files-found: error
