@@ -7,7 +7,7 @@
  * `POST /auth/api/tokens/app/verify` accepts it only for this app's own `aud`.
  */
 import { afterEach, beforeEach, vi } from 'vitest';
-import { resetDb } from '@/db';
+import { resetDb } from './stubs/db';
 
 export const APP_HOST = 'learn.test';
 export const AUTH_URL = 'https://kernel.test/auth';
@@ -44,6 +44,7 @@ function readBody(init?: RequestInit): unknown {
 }
 
 function handle(kernel: FakeKernel, url: string, init?: RequestInit): Response {
+  const headers = new Headers(init?.headers);
   const body = readBody(init) as Record<string, unknown> | null;
 
   for (const [suffix, responder] of kernel.respond) {
@@ -54,6 +55,12 @@ function handle(kernel: FakeKernel, url: string, init?: RequestInit): Response {
     const token = String(body?.token ?? '');
     if (!token.startsWith('tok:') || body?.aud !== APP_HOST) return jsonResponse401();
     return jsonRes({ sub: token.slice(4), aud: APP_HOST, scopes: ['learn:test'] });
+  }
+  if (url === `${AUTH_URL}/api/session`) {
+    // Legacy shared session cookie fallback: `imajin_session=good:<did>`.
+    const cookie = headers.get('cookie') ?? '';
+    const match = /imajin_session=good:([^;]+)/.exec(cookie);
+    return match ? jsonRes({ did: match[1] }) : jsonRes({ error: 'invalid' }, 401);
   }
   if (url === `${REGISTRY_URL}/api/node/self`) {
     return kernel.nodeSelf ? jsonRes(kernel.nodeSelf) : jsonRes({ error: 'nope' }, 500);
@@ -80,7 +87,7 @@ function jsonResponse401(): Response {
 }
 
 /** Installs the fake kernel + resets the database around every test in the calling file. */
-export function useFakeKernel(): FakeKernel {
+export function installFakeKernel(): FakeKernel {
   const kernel: FakeKernel = { calls: [], respond: new Map(), profiles: new Map(), nodeSelf: null };
 
   beforeEach(async () => {

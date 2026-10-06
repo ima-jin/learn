@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { courses, db } from '@/db';
 import { CREATOR, OTHER, makeRequest, seedCourse, seedLesson, seedModule } from '@test/helpers';
-import { AUTH_URL, useFakeKernel } from '@test/kernel';
+import { AUTH_URL, installFakeKernel } from '@test/kernel';
 import { GET, POST } from '../route';
 
-const kernel = useFakeKernel();
+const kernel = installFakeKernel();
 
 describe('POST /api/courses', () => {
   it('rejects anonymous callers with 401', async () => {

@@ -8,6 +8,8 @@ export const OTHER = 'did:imajin:other';
 interface ReqOptions {
   /** Authenticate as this DID via a (fake-kernel-verified) scoped app token. */
   did?: string;
+  /** Authenticate via the legacy shared session cookie instead of an app token. */
+  cookieDid?: string;
   body?: unknown;
   /** Raw body text, to send malformed JSON. */
   rawBody?: string;
@@ -17,6 +19,7 @@ interface ReqOptions {
 export function makeRequest(method: string, path: string, options: ReqOptions = {}): NextRequest {
   const headers: Record<string, string> = { ...options.headers };
   if (options.did) headers.authorization = `Bearer tok:${options.did}`;
+  if (options.cookieDid) headers.cookie = `imajin_session=good:${options.cookieDid}`;
   let body: string | undefined = options.rawBody;
   if (body === undefined && options.body !== undefined) {
     body = JSON.stringify(options.body);
