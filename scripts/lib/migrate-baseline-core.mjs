@@ -45,7 +45,8 @@ const IDENTIFIER_PATTERN = /^[a-z_][a-z0-9_]*$/;
 export class BaselineMismatchError extends Error {
   /** @param {string[]} problems */
   constructor(problems) {
-    super(`Refusing to baseline — ${problems.length} problem(s):\n${problems.map((p) => `  - ${p}`).join('\n')}`);
+    const bullets = problems.map((p) => `  - ${p}`).join('\n');
+    super(`Refusing to baseline — ${problems.length} problem(s):\n${bullets}`);
     this.name = 'BaselineMismatchError';
     this.problems = problems;
   }

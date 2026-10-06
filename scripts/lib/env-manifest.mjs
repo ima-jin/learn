@@ -266,6 +266,49 @@ function checkTargetBinding(get, target, errors, warnings) {
   }
 }
 
+function checkPresence(get, errors) {
+  for (const variable of ENV_VARS) {
+    if (variable.status === 'required' && get(variable.name) === '') {
+      errors.push(`${variable.name} is required but not set.`);
+    }
+    if (variable.status === 'forbidden' && get(variable.name) !== '') {
+      errors.push(`${variable.name} must not be set (${variable.summary})`);
+    }
+  }
+}
+
+function checkFixedValues(get, errors) {
+  const schema = get('APP_DB_SCHEMA');
+  if (schema !== '' && schema !== 'learn') {
+    errors.push('APP_DB_SCHEMA must be `learn` — the existing schema this app owns; renaming it orphans migration state.');
+  }
+  const basePath = get('NEXT_PUBLIC_BASE_PATH');
+  if (basePath !== '' && basePath !== BASE_PATH) {
+    errors.push(`NEXT_PUBLIC_BASE_PATH must be ${BASE_PATH}.`);
+  }
+}
+
+function checkClaim(get, keystoreExists, errors, warnings) {
+  const claimCode = get('IMAJIN_APP_CLAIM_CODE');
+  if (claimCode !== '') {
+    warnings.push('IMAJIN_APP_CLAIM_CODE is set — it is needed on the first boot only; remove it once the app has booted once.');
+  } else if (keystoreExists === false) {
+    errors.push(
+      "No keystore found and IMAJIN_APP_CLAIM_CODE is not set — the first boot needs the one-time claim code from the operator's /jin approval card (docs/REGISTRATION.md).",
+    );
+  }
+}
+
+function checkDatabase(get, errors) {
+  const databaseUrl = get('DATABASE_URL');
+  if (databaseUrl !== '' && !/^postgres(ql)?:$/.test(parseUrl(databaseUrl)?.protocol ?? '')) {
+    errors.push('DATABASE_URL must be a postgres:// or postgresql:// URL.');
+  }
+  if (PLACEHOLDER.test(databaseUrl)) {
+    errors.push('DATABASE_URL still contains a placeholder password.');
+  }
+}
+
 /**
  * Pure validation of a parsed env file for a deploy target. Returns
  * `{ errors, warnings }`; messages name variables, never values.
@@ -286,46 +329,15 @@ export function validateEnv(env, target, options = {}) {
   const warnings = [];
   const get = (name) => (env[name] ?? '').trim();
 
-  for (const variable of ENV_VARS) {
-    if (variable.status === 'required' && get(variable.name) === '') {
-      errors.push(`${variable.name} is required but not set.`);
-    }
-    if (variable.status === 'forbidden' && get(variable.name) !== '') {
-      errors.push(`${variable.name} must not be set (${variable.summary})`);
-    }
-  }
+  checkPresence(get, errors);
+  checkDatabase(get, errors);
 
-  const databaseUrl = get('DATABASE_URL');
-  if (databaseUrl !== '' && !/^postgres(ql)?:$/.test(parseUrl(databaseUrl)?.protocol ?? '')) {
-    errors.push('DATABASE_URL must be a postgres:// or postgresql:// URL.');
-  }
-  if (PLACEHOLDER.test(databaseUrl)) {
-    errors.push('DATABASE_URL still contains a placeholder password.');
-  }
-
-  const schema = get('APP_DB_SCHEMA');
-  if (schema !== '' && schema !== 'learn') {
-    errors.push('APP_DB_SCHEMA must be `learn` — the existing schema this app owns; renaming it orphans migration state.');
-  }
-
-  const basePath = get('NEXT_PUBLIC_BASE_PATH');
-  if (basePath !== '' && basePath !== BASE_PATH) {
-    errors.push(`NEXT_PUBLIC_BASE_PATH must be ${BASE_PATH}.`);
-  }
-
+  checkFixedValues(get, errors);
   checkKernelHosts(get, target, errors);
   checkIdentity(get, errors);
   checkTargetBinding(get, target, errors, warnings);
 
-  const claimCode = get('IMAJIN_APP_CLAIM_CODE');
-  if (claimCode !== '') {
-    warnings.push('IMAJIN_APP_CLAIM_CODE is set — it is needed on the first boot only; remove it once the app has booted once.');
-  }
-  if (claimCode === '' && options.keystoreExists === false) {
-    errors.push(
-      'No keystore found and IMAJIN_APP_CLAIM_CODE is not set — the first boot needs the one-time claim code from the operator\'s /jin approval card (docs/REGISTRATION.md).',
-    );
-  }
+  checkClaim(get, options.keystoreExists, errors, warnings);
 
   return { errors, warnings };
 }
