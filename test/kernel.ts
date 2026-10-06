@@ -43,53 +43,48 @@ function readBody(init?: RequestInit): unknown {
   }
 }
 
-function handle(kernel: FakeKernel, url: string, init?: RequestInit): Response {
-  const headers = new Headers(init?.headers);
-  const body = readBody(init) as Record<string, unknown> | null;
+type Handler = (kernel: FakeKernel, body: Record<string, unknown> | null, headers: Headers) => Response;
 
-  for (const [suffix, responder] of kernel.respond) {
-    if (url.endsWith(suffix)) return responder();
-  }
-
-  if (url === `${AUTH_URL}/api/tokens/app/verify`) {
+/** One handler per kernel endpoint the app talks to. */
+const ENDPOINTS: Record<string, Handler> = {
+  [`${AUTH_URL}/api/tokens/app/verify`]: (_kernel, body) => {
     const token = typeof body?.token === 'string' ? body.token : '';
-    if (!token.startsWith('tok:') || body?.aud !== APP_HOST) return jsonResponse401();
+    if (!token.startsWith('tok:') || body?.aud !== APP_HOST) return jsonRes({ valid: false }, 401);
     return jsonRes({ sub: token.slice(4), aud: APP_HOST, scopes: ['learn:test'] });
-  }
-  if (url === `${AUTH_URL}/api/session`) {
-    // Legacy shared session cookie fallback: `imajin_session=good:<did>`.
-    const cookie = headers.get('cookie') ?? '';
-    const match = /imajin_session=good:([^;]+)/.exec(cookie);
+  },
+  // Legacy shared session cookie fallback: `imajin_session=good:<did>`.
+  [`${AUTH_URL}/api/session`]: (_kernel, _body, headers) => {
+    const match = /imajin_session=good:([^;]+)/.exec(headers.get('cookie') ?? '');
     return match ? jsonRes({ did: match[1] }) : jsonRes({ error: 'invalid' }, 401);
-  }
-  if (url === `${REGISTRY_URL}/api/node/self`) {
-    return kernel.nodeSelf ? jsonRes(kernel.nodeSelf) : jsonRes({ error: 'nope' }, 500);
-  }
-  if (url === `${PROFILE_URL}/api/resolve`) {
+  },
+  [`${REGISTRY_URL}/api/node/self`]: (kernel) =>
+    kernel.nodeSelf ? jsonRes(kernel.nodeSelf) : jsonRes({ error: 'nope' }, 500),
+  [`${PROFILE_URL}/api/resolve`]: (kernel, body) => {
     const dids = (body?.dids as string[]) ?? [];
     const results = dids.flatMap((did) => {
       const profile = kernel.profiles.get(did);
       return profile ? [profile] : [];
     });
     return jsonRes({ results });
+  },
+  [`${PAY_URL}/api/checkout`]: () => jsonRes({ id: 'cs_test', url: 'https://pay.test/checkout/cs_test' }),
+  [`${AUTH_URL}/api/attestations`]: () => jsonRes({ id: 'att_test' }, 201),
+};
+
+function handle(kernel: FakeKernel, url: string, init?: RequestInit): Response {
+  for (const [suffix, responder] of kernel.respond) {
+    if (url.endsWith(suffix)) return responder();
   }
-  if (url === `${PAY_URL}/api/checkout`) {
-    return jsonRes({ id: 'cs_test', url: 'https://pay.test/checkout/cs_test' });
-  }
-  if (url === `${AUTH_URL}/api/attestations`) {
-    return jsonRes({ id: 'att_test' }, 201);
-  }
-  return jsonRes({ error: `unexpected kernel call: ${url}` }, 404);
+
+  const endpoint = ENDPOINTS[url];
+  if (!endpoint) return jsonRes({ error: `unexpected kernel call: ${url}` }, 404);
+  return endpoint(kernel, readBody(init) as Record<string, unknown> | null, new Headers(init?.headers));
 }
 
 function urlOf(input: RequestInfo | URL): string {
   if (typeof input === 'string') return input;
   if (input instanceof URL) return input.href;
   return input.url;
-}
-
-function jsonResponse401(): Response {
-  return jsonRes({ valid: false }, 401);
 }
 
 /** Installs the fake kernel + resets the database around every test in the calling file. */
