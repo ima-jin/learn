@@ -3,7 +3,7 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { lessons } from '@/db/schema';
 import { authenticateOptional } from '@/lib/auth/authenticate';
-import { getCourseBySlug, getModuleInCourse, resolveContentAccess } from '@/lib/course-access';
+import { getCourseBySlug, getModuleInCourse, resolveContentAccess, withoutLessonContent } from '@/lib/course-access';
 import { requireCourseOwner } from '@/lib/owner';
 import { errorResponse, generateId, jsonResponse, readJson } from '@/lib/utils';
 
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   // Paid-course content stays locked for anyone who is not the creator or enrolled.
   if (access === 'locked') {
     return jsonResponse({
-      lessons: result.map(({ content: _content, metadata: _metadata, ...rest }) => ({ ...rest, content: null, locked: true })),
+      lessons: result.map((lesson) => ({ ...withoutLessonContent(lesson), content: null, locked: true })),
     });
   }
 

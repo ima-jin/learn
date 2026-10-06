@@ -3,7 +3,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { courses, enrollments, lessonProgress, lessons, modules } from '@/db/schema';
 import { authenticate, authenticateOptional } from '@/lib/auth/authenticate';
-import { getCourseBySlug } from '@/lib/course-access';
+import { getCourseBySlug, withoutLessonContent } from '@/lib/course-access';
 import { errorResponse, jsonResponse, readJson } from '@/lib/utils';
 
 type RouteParams = { params: Promise<{ slug: string }> };
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Strip content + metadata for non-creators (keep listing lean)
     const sanitized = isCreator
       ? moduleLessons
-      : moduleLessons.map(({ content: _content, metadata: _metadata, ...rest }) => rest);
+      : moduleLessons.map(withoutLessonContent);
 
     return { ...mod, lessons: sanitized };
   }));

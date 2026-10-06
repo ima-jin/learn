@@ -61,7 +61,12 @@ export function errorResponse(error: string, status = 400) {
  * Parse a request's JSON body. Malformed JSON is a client error (400) rather
  * than an unhandled 500.
  */
-export async function readJson(request: Request): Promise<{ body: Record<string, any> } | { response: Response }> {
+// Request bodies are validated field-by-field by each handler, as in the
+// original routes — hence the loosely typed body.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type JsonBody = Record<string, any>;
+
+export async function readJson(request: Request): Promise<{ body: JsonBody } | { response: Response }> {
   try {
     const parsed = await request.json();
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {

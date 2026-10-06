@@ -56,3 +56,12 @@ export async function resolveContentAccess(course: Course, callerDid: string | n
   if (callerDid && (await isEnrolled(course.id, callerDid))) return 'enrolled';
   return 'locked';
 }
+
+/**
+ * Lesson listing shape for callers who must not see lesson bodies: drops
+ * `content` and `metadata`, keeps everything else.
+ */
+export function withoutLessonContent<T extends object>(lesson: T): Omit<T, 'content' | 'metadata'> {
+  const entries = Object.entries(lesson).filter(([key]) => key !== 'content' && key !== 'metadata');
+  return Object.fromEntries(entries) as Omit<T, 'content' | 'metadata'>;
+}

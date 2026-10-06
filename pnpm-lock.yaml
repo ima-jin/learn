@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@ima-jin/auth':
         specifier: ^0.8.13
-        version: 0.8.13(drizzle-orm@0.45.3(postgres@3.4.9))(next@15.5.26(@types/node@20.19.43)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
+        version: 0.8.13(drizzle-orm@0.45.3(@electric-sql/pglite@0.5.8)(postgres@3.4.9))(next@15.5.26(@types/node@20.19.43)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
       '@ima-jin/auth-client':
         specifier: ^0.8.8
         version: 0.8.8(next@15.5.26(@types/node@20.19.43)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
@@ -25,7 +25,7 @@ importers:
         version: 0.8.13(next@15.5.26(@types/node@20.19.43)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
       drizzle-orm:
         specifier: ^0.45.1
-        version: 0.45.3(postgres@3.4.9)
+        version: 0.45.3(@electric-sql/pglite@0.5.8)(postgres@3.4.9)
       next:
         specifier: ^15.5.24
         version: 15.5.26(@types/node@20.19.43)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -39,6 +39,9 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.8
+        version: 0.5.8
       '@eslint/eslintrc':
         specifier: ^3.2.0
         version: 3.3.7
@@ -111,6 +114,9 @@ packages:
 
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
+
+  '@electric-sql/pglite@0.5.8':
+    resolution: {integrity: sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q==}
 
   '@emnapi/core@1.10.0':
     resolution: {integrity: sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw==}
@@ -3188,6 +3194,8 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
+  '@electric-sql/pglite@0.5.8': {}
+
   '@emnapi/core@1.10.0':
     dependencies:
       '@emnapi/wasi-threads': 1.2.1
@@ -3579,7 +3587,7 @@ snapshots:
       jose: 5.10.0
       next: 15.5.26(@types/node@20.19.43)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
-  '@ima-jin/auth@0.8.13(drizzle-orm@0.45.3(postgres@3.4.9))(next@15.5.26(@types/node@20.19.43)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))':
+  '@ima-jin/auth@0.8.13(drizzle-orm@0.45.3(@electric-sql/pglite@0.5.8)(postgres@3.4.9))(next@15.5.26(@types/node@20.19.43)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))':
     dependencies:
       '@ima-jin/config': 0.8.13(next@15.5.26(@types/node@20.19.43)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
       '@ima-jin/logger': 0.8.13(next@15.5.26(@types/node@20.19.43)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
@@ -3588,7 +3596,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       next: 15.5.26(@types/node@20.19.43)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     optionalDependencies:
-      drizzle-orm: 0.45.3(postgres@3.4.9)
+      drizzle-orm: 0.45.3(@electric-sql/pglite@0.5.8)(postgres@3.4.9)
     transitivePeerDependencies:
       - '@ima-jin/db'
 
@@ -4435,8 +4443,9 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.23.15
 
-  drizzle-orm@0.45.3(postgres@3.4.9):
+  drizzle-orm@0.45.3(@electric-sql/pglite@0.5.8)(postgres@3.4.9):
     optionalDependencies:
+      '@electric-sql/pglite': 0.5.8
       postgres: 3.4.9
 
   dunder-proto@1.0.1:
