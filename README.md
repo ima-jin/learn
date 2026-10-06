@@ -29,6 +29,19 @@ everything still verifies. (See `AGENTS.md` §3.)
 
 The kernel verifies both and returns `{ appDid, userDid, scopes }` — that triple is the app's entire authority.
 
+## What this app does
+
+Courses → modules → lessons, enrollment (free, or paid through the kernel's pay service) and per-lesson progress. The
+HTTP API is documented in [`api-spec/openapi.yaml`](./api-spec/openapi.yaml) (served at `/api/spec`); a contract test
+keeps it in lockstep with the route files. See [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) for the auth model and
+the (short, deliberate) list of differences from the original in-monorepo `apps/learn`.
+
+```bash
+pnpm install
+pnpm test        # route tests run real SQL against the real migrations in-process (PGlite) — no Postgres needed
+pnpm lint && pnpm typecheck && pnpm build
+```
+
 ## Getting started
 
 1. **Use this template** (GitHub's "Use this template" button, or `git clone` + a new remote).
