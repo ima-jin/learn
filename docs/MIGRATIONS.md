@@ -41,8 +41,17 @@ against an empty Postgres and asserts exactly that.
 ### Adopting an existing database
 
 `0000` uses plain `CREATE TABLE`, so it is for an **empty** database. A database that already has the kernel-created
-`learn` tables (prod/dev today) must not replay it: baseline it by inserting the `0000` hash into
-`learn.__drizzle_migrations` (or drop-and-restore into a fresh DB). That cutover belongs to the deploy step of #1987.
+`learn` tables (prod/dev today) must not replay it: run the baseline, which validates the live schema against `0000`
+and records `0000` in `learn.__drizzle_migrations` — never replaying, dropping or altering anything:
+
+```bash
+node --env-file=.env.local scripts/migrate-baseline.mjs --dry-run   # validate only
+node --env-file=.env.local scripts/migrate-baseline.mjs             # idempotent; refuses on mismatch
+pnpm db:migrate                                                     # then only what is newer than 0000
+```
+
+`scripts/deploy.sh` runs both steps on every deploy. Details, the refusal rules and exit codes are in
+[DEPLOY.md](./DEPLOY.md#migration-baseline).
 
 ## Workflow
 
