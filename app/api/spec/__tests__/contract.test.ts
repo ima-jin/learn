@@ -32,7 +32,7 @@ function toSpecPath(file: string): string {
 
 function exportedMethods(file: string): string[] {
   const source = readFileSync(file, 'utf-8');
-  return HTTP_METHODS.filter((m) => new RegExp(String.raw`export (async function|const) ${m}\b`).test(source));
+  return HTTP_METHODS.filter((m) => new RegExp(String.raw`export (async function|function|const) ${m}\b`).test(source));
 }
 
 const spec = parse(readFileSync(join(process.cwd(), 'api-spec', 'openapi.yaml'), 'utf-8'));

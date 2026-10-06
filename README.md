@@ -44,15 +44,17 @@ pnpm lint && pnpm typecheck && pnpm build
 
 ## Getting started
 
-1. **Use this template** (GitHub's "Use this template" button, or `git clone` + a new remote).
+1. **Create your app repo WITH template history** — clone + rename, **not** GitHub's "Use this template" button
+   (see [Creating a new app](#creating-a-new-app-with-template-history) below).
 2. **Register this app with the kernel** — see [`docs/REGISTRATION.md`](./docs/REGISTRATION.md).
    You'll get back this app's `appDid` and registry `id`.
 3. **Set env**: `cp .env.example .env.local`, then fill in `IMAJIN_APP_DID`,
-   `NEXT_PUBLIC_IMAJIN_APP_ID`, `SESSION_SECRET`, `APP_DB_SCHEMA`, `DATABASE_URL`, `IMAJIN_KERNEL_URL`,
-   and (first boot only) `IMAJIN_APP_CLAIM_CODE`. This app refuses to start without `IMAJIN_APP_DID`
-   set, or if a raw `IMAJIN_APP_PRIVATE_KEY` is present (see `instrumentation.ts`) — it fetches its
-   own signing key at boot via `@ima-jin/auth-client`'s `loadAppSigningKey()` instead; see
-   [`docs/REGISTRATION.md`](./docs/REGISTRATION.md).
+   `NEXT_PUBLIC_IMAJIN_APP_ID`, `SESSION_SECRET`, `APP_DB_SCHEMA`, `DATABASE_URL`, and
+   `IMAJIN_KERNEL_URL`. This app refuses to start without `IMAJIN_APP_DID` set, or if a raw
+   `IMAJIN_APP_PRIVATE_KEY` is present (see `instrumentation.ts`) — it fetches its own signing key
+   at boot via `@ima-jin/auth-client`'s `loadAppSigningKey()` instead. **Skip `IMAJIN_APP_CLAIM_CODE`
+   for now**: the operator path is *approve on `/jin` → open `<this app>/claim` → paste the code →
+   done* — see [`docs/REGISTRATION.md`](./docs/REGISTRATION.md).
 4. **Migrate this app's own database** (its own Postgres schema only — see
    [`docs/MIGRATIONS.md`](./docs/MIGRATIONS.md)):
    ```bash
@@ -75,13 +77,13 @@ ever hand-made or placed in `.env.local`:
    `appDid` and registry `id`.
 2. On the kernel's **`/jin`** operator dashboard, approve the app's `apps.provision` card — this mints a one-time
    **claim code** (shown once).
-3. Put it in the target's `.env.local` as `IMAJIN_APP_CLAIM_CODE` (with `IMAJIN_APP_DID`,
-   `NEXT_PUBLIC_IMAJIN_APP_ID` and a persistent `IMAJIN_APP_KEYSTORE`) and deploy. The first boot redeems it via
-   `loadAppSigningKey()` and persists only a `0600` bootstrap keystore; then **delete the claim code**.
+3. Redeem the claim code — either way, only a `0600` bootstrap keystore is persisted and the code is spent:
+   - **Browser (normal path):** set `IMAJIN_APP_DID`, `NEXT_PUBLIC_IMAJIN_APP_ID` and a persistent
+     `IMAJIN_APP_KEYSTORE`, deploy, and the app boots in *unclaimed* mode. Open `<app>/claim` and paste the code.
+   - **First-boot env (advanced/CI):** put it in `.env.local` as `IMAJIN_APP_CLAIM_CODE`; the first boot redeems it
+     via `loadAppSigningKey()`. Then **delete the claim code**.
 
-learn does not have an in-app `/claim` page yet (the browser "paste the code here" flow `links` has), so the code
-travels through the env var for now — details in the
-[operator runbook](./docs/REGISTRATION.md#minting-the-app-identity-operator-runbook).
+Details in the [operator runbook](./docs/REGISTRATION.md#minting-the-app-identity-operator-runbook).
 
 ## Deploying (prod + dev)
 
@@ -96,6 +98,58 @@ port 7103, `dev-learn` on 3103) and polls `/learn/api/health`. The Caddy route (
 entry, the idempotent migration baseline for the existing prod/dev schema (refuses on mismatch, never drops
 anything) and the one-time cutover checklist are in [`docs/DEPLOY.md`](./docs/DEPLOY.md); every environment variable
 is in [`docs/ENVIRONMENTS.md`](./docs/ENVIRONMENTS.md) (`.env.example`, `.env.dev.example`, `.env.prod.example`).
+
+## Creating a new app (with template history)
+
+> **Do not use GitHub's "Use this template" button.** It creates a repo with a brand-new, unrelated root
+> commit. Such an app can never merge template changes cleanly — its first sync is an
+> `--allow-unrelated-histories` merge with add/add conflicts on nearly every file (that's why `/claim` had to be
+> hand-ported into `links` and `dykil`). Instead, keep the template's history as the app's ancestry:
+
+```bash
+# 1. Clone the template under your app's name; the template becomes the `template` remote.
+git clone https://github.com/ima-jin/imajin-app-template.git <app-name>
+cd <app-name>
+git remote rename origin template
+
+# 2. Create the (empty) app repo on GitHub and make it `origin`. No README/license/.gitignore — it must be empty.
+gh repo create ima-jin/<app-name> --private --source=. --remote=origin --push
+
+# 3. Rename the template identity (one commit), then push.
+#    package.json "name", api-spec/openapi.yaml (title + example), app/api/health/route.ts (+ its test),
+#    app/layout.tsx description, sonar-project.properties (projectKey), the README title, and AGENTS.md §8.
+git checkout -b chore/rename-app
+# ...edit the files above...
+git commit -am "chore: rename template → <app-name>" && git push -u origin chore/rename-app
+```
+
+Because the app was cloned from the template, `git merge-base HEAD template/main` finds a common ancestor from
+the very first commit — there is nothing to "join".
+
+### Pulling template changes later
+
+```bash
+scripts/sync-from-template.sh --check   # list pending template commits; no merge, no branch
+scripts/sync-from-template.sh           # merge template/main onto chore/sync-from-template → open a PR
+```
+
+The script adds the `template` remote if missing, fetches `template/main`, and checks for a common ancestor:
+
+- **Histories joined** → prints `histories already joined; incremental merge` and runs a normal
+  `git merge template/main --no-edit` on a `chore/sync-from-template` branch (never straight to `main`).
+- **Not joined** (app created with "Use this template") → exits with status 2 and prints the one-time join. The
+  join is history-only — it changes **no files**:
+  ```bash
+  git checkout -b chore/join-template-history
+  git merge -s ours --allow-unrelated-histories <template-sha> -m "chore: join template history (one-time)"
+  ```
+  Use the template commit the app was **generated from** (the template's state when the app repo was created),
+  not `template/main`: `-s ours` marks everything up to that commit as already merged, so joining at the tip
+  would silently skip every template change since the app was created. After the join PR merges, the script
+  reports `histories already joined` and pulls later template changes as an ordinary merge.
+
+On a conflict (almost always AGENTS.md §8, or the renamed identity files from step 3), keep your version of
+what is yours and take the template's side of the shared contract.
 
 ## Consuming `@ima-jin/*`
 
@@ -127,15 +181,24 @@ api-spec/          ← this app's own OpenAPI document, served at /api/spec
 scripts/           ← deploy.sh, check-env.mjs, migrate-baseline.mjs (+ tests)
 ecosystem.config.cjs ← pm2 entries: prod-learn (7103), dev-learn (3103)
 instrumentation.ts ← boot-env guards + loadAppSigningKey() bootstrap (see docs/REGISTRATION.md)
+middleware.ts      ← gates every route on claim state — unclaimed page, /claim 404 once claimed (#2427)
 ```
+
+`app/claim/page.tsx` + `app/api/claim/route.ts` are the operator-facing claim page and its server
+route (#2427) — see "This app's own signing key" below.
 
 ## This app's own signing key
 
 This app never reads a raw private key from env. `instrumentation.ts` fails loud at boot if
-`IMAJIN_APP_PRIVATE_KEY` is set, and instead calls `@ima-jin/auth-client`'s `loadAppSigningKey()`:
-a one-time claim code (`IMAJIN_APP_CLAIM_CODE`) bootstraps a local `0600` keystore
-(`IMAJIN_APP_KEYSTORE`) on first boot; every later boot re-authenticates with that keystore, no
-operator action needed. See [`docs/REGISTRATION.md`](./docs/REGISTRATION.md#4-fetch-this-apps-own-signing-key-at-boot-7).
+`IMAJIN_APP_PRIVATE_KEY` is set, and instead calls `@ima-jin/auth-client`'s `loadAppSigningKey()`.
+Without a claim code or keystore yet, this app boots in **unclaimed mode** (#2427): every route
+except `/claim`, `/api/claim`, and `/api/health` serves a minimal "not claimed yet" page. The
+operator path: approve provisioning on the kernel's `/jin` → open `<this app>/claim` → paste the
+one-time claim code → done — no ssh, no env edit, no restart. A one-time `IMAJIN_APP_CLAIM_CODE`
+env var still works for automated/CI deploys and takes precedence when set. Either path bootstraps
+a local `0600` keystore (`IMAJIN_APP_KEYSTORE`); every later boot re-authenticates with that
+keystore, no operator action needed. See
+[`docs/REGISTRATION.md`](./docs/REGISTRATION.md#4-claim-this-apps-own-signing-key-7-2427).
 
 ## Mounting under a path prefix
 

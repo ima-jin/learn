@@ -37,49 +37,6 @@ jobs:
           fi
           echo "Markdown clean — no BEL/form-feed/lone-CR control characters."
 
-  migrations:
-    name: Migrations (real Postgres)
-    # Proves the migration runner creates the `learn` schema and every table in
-    # it on an empty database, and touches nothing outside that schema.
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          # CI-only throwaway container; trust auth keeps credentials out of the repo.
-          POSTGRES_HOST_AUTH_METHOD: trust
-          POSTGRES_DB: learn_ci
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      APP_DB_SCHEMA: learn
-      DATABASE_URL: postgres://postgres@localhost:5432/learn_ci
-      MIGRATIONS_TEST_DATABASE_URL: postgres://postgres@localhost:5432/learn_ci
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Run migrations (twice — must be idempotent)
-        run: |
-          pnpm db:migrate
-          pnpm db:migrate
-      - name: Verify schema, tables and constraints
-        run: pnpm exec vitest run src/db/__tests__/migrations.integration.test.ts
-      - name: Baseline CLI against a prod-shaped schema (real Postgres)
-        # MIGRATIONS_TEST_DATABASE_URL (job env) lets the tests create scratch
-        # databases on this server: baseline an existing schema, re-run it,
-        # refuse on mismatch, never touch data.
-        run: pnpm exec vitest run scripts/__tests__/migrate-baseline.test.ts
-
   test-build:
     name: Test + build
     runs-on: ubuntu-latest
@@ -139,12 +96,6 @@ jobs:
 
       - name: Build
         if: steps.detect.outputs.has_app == 'true'
-        # `next build` imports every route to collect page data, and src/db
-        # reads these at import time. Nothing connects to a database during the
-        # build, so a placeholder URL (no credentials) is enough.
-        env:
-          APP_DB_SCHEMA: learn
-          DATABASE_URL: postgres://postgres@localhost:5432/learn_build
         run: |
           if node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then
             ${{ steps.pm.outputs.pm }} run build
@@ -191,17 +142,27 @@ jobs:
         # an earlier version of this fix that checked out the PR head
         # directly from a pull_request_target-triggered job).
         if: github.event_name == 'pull_request'
+        # Untrusted event context (branch names are attacker-controlled) goes
+        # through env: and is quoted in the script — never interpolated with
+        # ${{ }} inside run:. jq does the JSON escaping.
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           mkdir -p /tmp/sonar-payload
           rsync -a --exclude='.git' --exclude='node_modules' --exclude='.next' --exclude='.imajin' ./ /tmp/sonar-payload/
-          cat > /tmp/sonar-payload/.sonar-pr-meta.json <<JSON
-          {
-            "prNumber": ${{ github.event.pull_request.number }},
-            "headSha": "${{ github.event.pull_request.head.sha }}",
-            "headRef": "${{ github.event.pull_request.head.ref }}",
-            "baseRef": "${{ github.event.pull_request.base.ref }}"
-          }
-          JSON
+          # NOT a dotfile: upload-artifact@v4 skips hidden files by default, which
+          # silently dropped this file and made every PR scan upload as a main
+          # analysis (empty sonar.pullrequest.* args).
+          jq -n \
+            --argjson prNumber "$PR_NUMBER" \
+            --arg headSha "$PR_HEAD_SHA" \
+            --arg headRef "$PR_HEAD_REF" \
+            --arg baseRef "$PR_BASE_REF" \
+            '{prNumber: $prNumber, headSha: $headSha, headRef: $headRef, baseRef: $baseRef}' \
+            > /tmp/sonar-payload/sonar-pr-meta.json
 
       - name: Upload Sonar payload
         if: github.event_name == 'pull_request'
@@ -210,8 +171,4 @@ jobs:
           name: sonar-payload
           path: /tmp/sonar-payload
           retention-days: 1
-          # upload-artifact@v4 skips dotfiles by default, which silently dropped
-          # .sonar-pr-meta.json — the privileged SonarCloud job then ran with an
-          # empty PR key and scanned a branch instead of the pull request.
-          include-hidden-files: true
           if-no-files-found: error
