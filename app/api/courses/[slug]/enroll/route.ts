@@ -53,18 +53,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     await db.insert(enrollments).values(enrollment);
 
     // Initialize progress for all lessons
-    const courseModules = await db.select().from(modules).where(eq(modules.courseId, course.id));
-    for (const mod of courseModules) {
-      const moduleLessons = await db.select({ id: lessons.id }).from(lessons).where(eq(lessons.moduleId, mod.id));
-      if (moduleLessons.length > 0) {
-        await db.insert(lessonProgress).values(
-          moduleLessons.map(l => ({
-            enrollmentId: enrollment.id,
-            lessonId: l.id,
-            status: 'not_started',
-          }))
-        );
-      }
+    const courseLessons = await db.select({ id: lessons.id })
+      .from(lessons)
+      .innerJoin(modules, eq(lessons.moduleId, modules.id))
+      .where(eq(modules.courseId, course.id));
+    if (courseLessons.length > 0) {
+      await db.insert(lessonProgress).values(
+        courseLessons.map(l => ({
+          enrollmentId: enrollment.id,
+          lessonId: l.id,
+          status: 'not_started',
+        }))
+      );
     }
 
     // Best-effort domain event via the kernel's public attestation API.

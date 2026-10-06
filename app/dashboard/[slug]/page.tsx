@@ -79,7 +79,7 @@ export default function CourseEditorPage() {
     }
   }, [slug]);
 
-  useEffect(() => { loadCourse(); }, [loadCourse]);
+  useEffect(() => { void loadCourse(); }, [loadCourse]);
 
   async function saveCourse() {
     setSaving(true);

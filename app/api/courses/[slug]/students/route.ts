@@ -27,17 +27,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   if (course.creatorDid !== authResult.auth.did) return errorResponse('Not authorized', 403);
 
   // Count total lessons
-  const courseModules = await db.select({ id: modules.id })
-    .from(modules)
+  const [lessonTotal] = await db.select({ count: count() })
+    .from(lessons)
+    .innerJoin(modules, eq(lessons.moduleId, modules.id))
     .where(eq(modules.courseId, course.id));
-
-  let totalLessons = 0;
-  for (const mod of courseModules) {
-    const [result] = await db.select({ count: count() })
-      .from(lessons)
-      .where(eq(lessons.moduleId, mod.id));
-    totalLessons += result.count;
-  }
+  const totalLessons = lessonTotal.count;
 
   // Get enrollments with progress
   const enrolled = await db.select()

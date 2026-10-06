@@ -52,7 +52,7 @@ function handle(kernel: FakeKernel, url: string, init?: RequestInit): Response {
   }
 
   if (url === `${AUTH_URL}/api/tokens/app/verify`) {
-    const token = String(body?.token ?? '');
+    const token = typeof body?.token === 'string' ? body.token : '';
     if (!token.startsWith('tok:') || body?.aud !== APP_HOST) return jsonResponse401();
     return jsonRes({ sub: token.slice(4), aud: APP_HOST, scopes: ['learn:test'] });
   }
@@ -82,6 +82,12 @@ function handle(kernel: FakeKernel, url: string, init?: RequestInit): Response {
   return jsonRes({ error: `unexpected kernel call: ${url}` }, 404);
 }
 
+function urlOf(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
 function jsonResponse401(): Response {
   return jsonRes({ valid: false }, 401);
 }
@@ -103,11 +109,15 @@ export function installFakeKernel(): FakeKernel {
     };
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === 'string' ? input : input.toString();
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = urlOf(input);
         const headers = Object.fromEntries(new Headers(init?.headers).entries());
         kernel.calls.push({ url, method: init?.method ?? 'GET', headers, body: readBody(init) });
-        return handle(kernel, url, init);
+        try {
+          return Promise.resolve(handle(kernel, url, init));
+        } catch (error) {
+          return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+        }
       }),
     );
   });

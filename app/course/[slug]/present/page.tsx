@@ -81,7 +81,7 @@ export default function PresentPage() {
         setLoading(false);
       }
     }
-    load();
+    void load();
   }, [slug, router]);
 
   if (loading) {

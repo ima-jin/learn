@@ -13,19 +13,17 @@ import * as schema from '../../src/db/schema';
 export * from '../../src/db/schema';
 
 const MIGRATIONS_DIR = join(process.cwd(), 'migrations');
-const STATEMENT_BREAKPOINT = '--> statement-breakpoint';
 
 const client = new PGlite();
 
-const migrationFiles = readdirSync(MIGRATIONS_DIR)
+// The drizzle `--> statement-breakpoint` markers are SQL comments, so each
+// migration file is valid SQL as-is; apply them all in order in one go.
+const migrationSql = readdirSync(MIGRATIONS_DIR)
   .filter((file) => file.endsWith('.sql'))
-  .sort((a, b) => a.localeCompare(b));
-for (const file of migrationFiles) {
-  const statements = readFileSync(join(MIGRATIONS_DIR, file), 'utf-8').split(STATEMENT_BREAKPOINT);
-  for (const statement of statements) {
-    if (statement.trim()) await client.exec(statement);
-  }
-}
+  .sort((a, b) => a.localeCompare(b))
+  .map((file) => readFileSync(join(MIGRATIONS_DIR, file), 'utf-8'))
+  .join('\n');
+await client.exec(migrationSql);
 
 export const db = drizzle(client, { schema });
 

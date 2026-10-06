@@ -122,7 +122,7 @@ export default function CourseDetailPage() {
         setLoading(false);
       }
     }
-    load();
+    void load();
   }, [slug]);
 
   // Auto-enroll after onboard email verification redirect
@@ -131,7 +131,7 @@ export default function CourseDetailPage() {
     const params = new URLSearchParams(globalThis.location.search);
     if (params.get('enroll') === '1') {
       globalThis.history.replaceState({}, '', `/course/${slug}`);
-      handleEnroll();
+      void handleEnroll();
     }
   // Runs once the course has loaded (keyed on `course` only) — re-running on every
   // `enrolling` change would fire the auto-enroll twice.
