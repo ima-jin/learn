@@ -37,6 +37,43 @@ jobs:
           fi
           echo "Markdown clean — no BEL/form-feed/lone-CR control characters."
 
+  migrations:
+    name: Migrations (real Postgres)
+    # Proves the migration runner creates the `learn` schema and every table in
+    # it on an empty database, and touches nothing outside that schema.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: learn_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_DB_SCHEMA: learn
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/learn_ci
+      MIGRATIONS_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/learn_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run migrations (twice — must be idempotent)
+        run: |
+          pnpm db:migrate
+          pnpm db:migrate
+      - name: Verify schema, tables and constraints
+        run: pnpm exec vitest run src/db/__tests__/migrations.integration.test.ts
+
   test-build:
     name: Test + build
     runs-on: ubuntu-latest

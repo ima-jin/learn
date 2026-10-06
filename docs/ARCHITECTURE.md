@@ -1,4 +1,4 @@
-# Architecture — &lt;App Name&gt;
+# Architecture — Learn
 
 > This app is a **lens** over the user's signed records. It owns no authoritative state. See `AGENTS.md` §1–§3.
 

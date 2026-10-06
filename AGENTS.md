@@ -1,18 +1,3 @@
-<!--
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │  FORK CHECKLIST — fill this in first, then delete this comment block  │
-  │                                                                       │
-  │  APP NAME:        <e.g. AgriFortress>                                 │
-  │  APP DID:         <did:imajin:… — from app registration>             │
-  │  SCOPES:          <e.g. supply:read, supply:write>                    │
-  │  DOMAIN:          <e.g. integrity.imajin.ai>                          │
-  │  KERNEL:          <prod: https://jin.imajin.ai | dev: https://dev-jin.imajin.ai> │
-  │  REFERENCE APP:   ima-jin/imajin-scorecard                            │
-  │                                                                       │
-  │  Then: fill the "This App" section, keep everything else, delete me.  │
-  └─────────────────────────────────────────────────────────────────────┘
--->
-
 # AGENTS.md — Third-Party App on Imajin
 
 This repo is a **standalone, arms-length application** that composes the Imajin platform through its
@@ -193,15 +178,22 @@ Full text: `ima-jin/conventions/ISSUE-CONVENTIONS.md`. This §7 is kept in sync 
 
 ---
 
-## 8. This App (fork fills this in)
+## 8. This App
 
-> Replace this whole section in the fork. Keep §1–§7 intact.
-
-- **What it is:** _<one-line purpose>_
-- **App DID:** _<did:imajin:…>_
-- **Scopes:** _<e.g. supply:read, supply:write>_
-- **Domain:** _<e.g. app.imajin.ai>_
-- **The real-world loop it instruments:** _<who → who, what changes hands, the one paid leg>_
-- **Domain events it emits (via kernel API):** _<e.g. supply.declared → supply.received>_
-- **Connectors it consumes:** _<e.g. QuickBooks (user self-authorizes)>_
-- **Scope guardrails specific to this app:** _<the "do not build X" list — keep it provable, not comprehensive>_
+- **What it is:** Learn — courses, modules, lessons, enrollments and per-lesson progress, rebuilt as a standalone
+  registered app (ima-jin/imajin-ai#1987, previously `apps/learn` inside the monorepo).
+- **App DID:** _pending registration (#1987 later step)_ — set via `IMAJIN_APP_DID`, never committed
+- **Scopes:** _pending registration_ — declared at registration time, not guessed here
+- **Domain:** learn.imajin.ai (prod) / dev-learn.imajin.ai (dev) — deploy wiring is a later step of #1987
+- **Database:** Postgres schema `learn` (`APP_DB_SCHEMA=learn`), five tables — `courses`, `modules`, `lessons`,
+  `enrollments`, `lesson_progress` — owned by this repo's `migrations/` (see `docs/MIGRATIONS.md`). The tables were
+  ported column-for-column from the kernel's shared migrations; the kernel no longer owns them.
+- **The real-world loop it instruments:** creator publishes a course → student enrolls (free, or paid via the
+  kernel's settlement leg) → student completes lessons; completion is the record.
+- **Domain events it emits (via kernel API):** none yet — added with the route port in later steps.
+- **Connectors it consumes:** none.
+- **Scope guardrails specific to this app:**
+  - Do not read or write `profile`, `auth`, `registry`, `pay` or any other schema — resolve DIDs/profiles/payments
+    through the kernel's public API.
+  - Do not import `@imajin/db` or any `apps/**` source; the only `@ima-jin/*` packages allowed are the published ones.
+  - Never change `APP_DB_SCHEMA` after first migrate.
