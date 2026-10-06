@@ -13,6 +13,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // src/db/schema.ts binds every table to APP_DB_SCHEMA at import time.
+    env: { APP_DB_SCHEMA: process.env.APP_DB_SCHEMA ?? 'learn' },
     include: ['**/__tests__/**/*.test.ts'],
     exclude: ['node_modules/**', '.next/**'],
     server: {

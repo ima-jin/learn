@@ -23,6 +23,27 @@ Concretely, for this app:
 - `APP_DB_SCHEMA` is set once, at registration time, and never changed afterwards. Renaming it
   would orphan every existing migration's tracking state.
 
+## Learn's tables
+
+`APP_DB_SCHEMA=learn`. `migrations/0000_learn_schema.sql` creates the schema (`IF NOT EXISTS`) and these
+tables, ported column-for-column from the kernel's `migrations/0001_seed.sql` + `0018_learn_course_type.sql`:
+
+- `courses` — top-level containers (`slug` unique; indexes on `creator_did`, `slug`)
+- `modules` — sections of a course (FK → `courses`, cascade)
+- `lessons` — units within a module (FK → `modules`, cascade)
+- `enrollments` — student ↔ course (FK → `courses`, cascade; unique `(course_id, student_did)`)
+- `lesson_progress` — per-lesson status (PK `(enrollment_id, lesson_id)`; FKs → `enrollments`, `lessons`, cascade)
+
+drizzle's own journal is kept in `learn.__drizzle_migrations` (`migrations` block in `drizzle.config.ts`), so the
+runner never creates or writes a schema other than `learn`. CI's `migrations` job runs `pnpm db:migrate` twice
+against an empty Postgres and asserts exactly that.
+
+### Adopting an existing database
+
+`0000` uses plain `CREATE TABLE`, so it is for an **empty** database. A database that already has the kernel-created
+`learn` tables (prod/dev today) must not replay it: baseline it by inserting the `0000` hash into
+`learn.__drizzle_migrations` (or drop-and-restore into a fresh DB). That cutover belongs to the deploy step of #1987.
+
 ## Workflow
 
 ```bash

@@ -1,7 +1,10 @@
-# &lt;App Name&gt; — a third-party app on Imajin
+# Learn — a third-party app on Imajin
 
 > Forked from [`ima-jin/imajin-app-template`](https://github.com/ima-jin/imajin-app-template). **Read
 > [`AGENTS.md`](./AGENTS.md) first** — it defines the boundary this app must not cross.
+
+**Database:** Postgres schema `learn` (`APP_DB_SCHEMA=learn`) — `courses`, `modules`, `lessons`, `enrollments`,
+`lesson_progress`, defined in `src/db/schema.ts` and created by `pnpm db:migrate`.
 
 **Platform:** [Imajin](https://imajin.ai) (sovereign-tech kernel) · **Reference app:** `ima-jin/imajin-scorecard`
 

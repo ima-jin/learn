@@ -37,4 +37,13 @@ export default defineConfig({
     url: process.env.DATABASE_URL!,
   },
   schemaFilter: [appSchemaName],
+  // Keep drizzle's own migration journal inside this app's schema too. The
+  // default (`drizzle.__drizzle_migrations`) would write to a shared `drizzle`
+  // schema, i.e. outside the one schema this app owns (docs/MIGRATIONS.md).
+  // drizzle-kit creates this schema (CREATE SCHEMA IF NOT EXISTS) before the
+  // journal table, and migration 0000 creates it as well.
+  migrations: {
+    schema: appSchemaName,
+    table: '__drizzle_migrations',
+  },
 });
