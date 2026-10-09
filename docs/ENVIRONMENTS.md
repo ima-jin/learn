@@ -61,11 +61,11 @@ Missing any of these and `scripts/check-env.mjs` fails the deploy before anythin
 
 ## First boot only
 
-Set once, then delete. `check-env` fails the deploy while there is neither a keystore nor a claim code.
+Optional: set once, then delete. With neither a keystore nor a claim code, `check-env` only warns and the app boots unclaimed — claim it at `/learn/claim` after boot.
 
 | Variable | When | Dev | Prod | What it does |
 |---|---|---|---|---|
-| `IMAJIN_APP_CLAIM_CODE` **(secret)** | runtime | (only on first boot) | (only on first boot) | One-time code from the kernel operator's /jin approval card. Needed only on the very first boot (no keystore yet) or a lost-keystore rebind; delete it after the first successful boot. check-env fails while there is neither a keystore nor a claim code. |
+| `IMAJIN_APP_CLAIM_CODE` **(secret)** | runtime | (only on first boot) | (only on first boot) | One-time code from the kernel operator's /jin approval card. Needed only on the very first boot (no keystore yet) or a lost-keystore rebind; delete it after the first successful boot. With neither a keystore nor a claim code, check-env only warns; claim at /learn/claim after boot. |
 
 ## Optional
 

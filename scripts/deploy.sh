@@ -128,7 +128,7 @@ health_check() {
   done
   echo "deploy: ${app_name} did not report healthy at ${health_url} after $((HEALTH_ATTEMPTS * HEALTH_INTERVAL_SECONDS))s." >&2
   echo "deploy: inspect with: pm2 logs ${app_name} --lines 100" >&2
-  echo "deploy: a first boot needs IMAJIN_APP_CLAIM_CODE in the env file (docs/DEPLOY.md, 'First boot')." >&2
+  echo "deploy: a first boot with no claim code is unclaimed until the operator claims at /learn/claim (docs/DEPLOY.md, 'First boot')." >&2
   return 1
 }
 

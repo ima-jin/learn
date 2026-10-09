@@ -68,7 +68,8 @@ Use `~/dev/learn` and `.env.dev.example` / `scripts/deploy.sh dev` for dev. Depl
   `.env.local` as `IMAJIN_APP_CLAIM_CODE` together with the registry's `IMAJIN_APP_DID` and
   `NEXT_PUBLIC_IMAJIN_APP_ID`, and deploy. The first boot spends the code and writes the 0600 keystore
   (`IMAJIN_APP_KEYSTORE`); **delete `IMAJIN_APP_CLAIM_CODE` afterwards**. `check-env.mjs` fails while an identity
-  value is still a placeholder, and while there is neither a keystore nor a claim code. No key is ever made by hand
+  value is still a placeholder. With neither a keystore nor a claim code it only warns — deploy anyway and claim
+  at `/learn/claim` after boot instead (REGISTRATION.md §4). No key is ever made by hand
   and none ever appears in `.env.local` or a log.
 - **Create the databases/roles** and put the connection strings in each `.env.local`. Prod/dev already contain the
   `learn` schema and data; the baseline adopts it in place.

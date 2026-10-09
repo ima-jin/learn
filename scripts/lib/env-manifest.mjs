@@ -293,8 +293,8 @@ function checkClaim(get, keystoreExists, errors, warnings) {
   if (claimCode !== '') {
     warnings.push('IMAJIN_APP_CLAIM_CODE is set — it is needed on the first boot only; remove it once the app has booted once.');
   } else if (keystoreExists === false) {
-    errors.push(
-      "No keystore found and IMAJIN_APP_CLAIM_CODE is not set — the first boot needs the one-time claim code from the operator's /jin approval card (docs/REGISTRATION.md).",
+    warnings.push(
+      "No keystore found and IMAJIN_APP_CLAIM_CODE is not set — claim at /learn/claim after boot with the one-time code from the operator's /jin approval card (docs/REGISTRATION.md).",
     );
   }
 }
@@ -314,9 +314,9 @@ function checkDatabase(get, errors) {
  * `{ errors, warnings }`; messages name variables, never values.
  *
  * `options.keystoreExists` (true/false, omit to skip the check): whether this
- * app's bootstrap keystore is already on disk. With no keystore the first
- * boot needs IMAJIN_APP_CLAIM_CODE, so the deploy fails here — before pm2 is
- * touched — instead of crash-looping at boot.
+ * app's bootstrap keystore is already on disk. With no keystore and no
+ * IMAJIN_APP_CLAIM_CODE the app boots unclaimed (docs/REGISTRATION.md §4), so
+ * this only warns: the operator claims at /learn/claim after boot.
  * @param {Record<string, string | undefined>} env
  * @param {'prod' | 'dev'} target
  * @param {{ keystoreExists?: boolean }} [options]

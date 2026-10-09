@@ -209,11 +209,15 @@ describe('validateEnv', () => {
     expect(warnings.join('\n')).toMatch(/LOG_DB_TRANSPORT=true/);
   });
 
-  it('needs a claim code on a first boot (no keystore), and only then', () => {
+  it('only warns on a first boot (no keystore, no claim code) — claim at /learn/claim after boot', () => {
     const firstBoot = validateEnv(validProd(), 'prod', { keystoreExists: false });
-    expect(firstBoot.errors.join('\n')).toMatch(/No keystore found and IMAJIN_APP_CLAIM_CODE is not set/);
+    expect(firstBoot.errors).toEqual([]);
+    expect(firstBoot.warnings.join('\n')).toMatch(/No keystore found and IMAJIN_APP_CLAIM_CODE is not set/);
+    expect(firstBoot.warnings.join('\n')).toMatch(/claim at \/learn\/claim after boot/);
 
-    expect(validateEnv({ ...validProd(), IMAJIN_APP_CLAIM_CODE: 'once' }, 'prod', { keystoreExists: false }).errors).toEqual([]);
+    const withCode = validateEnv({ ...validProd(), IMAJIN_APP_CLAIM_CODE: 'once' }, 'prod', { keystoreExists: false });
+    expect(withCode.errors).toEqual([]);
+    expect(withCode.warnings.join('\n')).not.toMatch(/\/learn\/claim/);
     expect(validateEnv(validProd(), 'prod', { keystoreExists: true })).toEqual({ errors: [], warnings: [] });
   });
 
@@ -243,12 +247,14 @@ describe('check-env CLI', () => {
     expect(result.stdout + result.stderr).not.toContain(SECRET);
   });
 
-  it('exits 1 on a first boot (no keystore, no claim code) without echoing any value', () => {
+  it('exits 0 on a first boot (no keystore, no claim code), warning to claim at /learn/claim, without echoing any value', () => {
     const file = join(dir, 'firstboot.env');
     writeFileSync(file, filledText('.env.dev.example', join(dir, 'does-not-exist.json')));
     const result = cli(['dev', '--file', file]);
-    expect(result.status).toBe(1);
+    expect(result.status).toBe(0);
     expect(result.stderr).toMatch(/No keystore found and IMAJIN_APP_CLAIM_CODE is not set/);
+    expect(result.stderr).toMatch(/claim at \/learn\/claim after boot/);
+    expect(result.stderr).not.toMatch(/^error:/m);
     expect(result.stdout + result.stderr).not.toContain(SECRET);
   });
 
