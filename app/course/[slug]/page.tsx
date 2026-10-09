@@ -8,6 +8,7 @@ import { SignInToEnroll } from '@/components/SignInToEnroll';
 import { useToast } from '@ima-jin/ui';
 import { buildPublicUrl } from '@ima-jin/config';
 import { learnFetch } from '@/lib/api-client';
+import { CREATOR_NO_CARD_RAIL_MESSAGE, NO_CARD_RAIL_MESSAGE, SELLER_NO_CARD_RAIL } from '@/lib/card-rail';
 
 interface Lesson {
   id: string;
@@ -61,16 +62,20 @@ const contentTypeIcons: Record<string, string> = {
   video: '🎬',
 };
 
+/**
+ * Can the course creator take a card payment? Pay's public card-rail check (#2757, replacing the
+ * removed `/api/connect/check`): true when the creator has connected their own Stripe key.
+ */
 async function resolveCourseSellerConnected(price: number, creatorDid: string | null | undefined): Promise<boolean> {
   if (!(price > 0 && creatorDid)) return true;
   try {
     const payUrl = buildPublicUrl('pay');
-    const connectRes = await fetch(
-      `${payUrl}/api/connect/check?did=${encodeURIComponent(creatorDid)}`
+    const railRes = await fetch(
+      `${payUrl}/api/card-rail/check?did=${encodeURIComponent(creatorDid)}`
     );
-    if (!connectRes.ok) return false;
-    const connectData = await connectRes.json();
-    return connectData.chargesEnabled ?? false;
+    if (!railRes.ok) return false;
+    const railData = await railRes.json();
+    return railData.cardEnabled ?? false;
   } catch {
     // Default to connected on error
     return true;
@@ -111,7 +116,7 @@ export default function CourseDetailPage() {
         const data = await res.json();
         setCourse(data);
 
-        // Check if course creator has Stripe Connect enabled
+        // Check if the course creator has a card rail (their own connected Stripe key)
         setSellerConnected(await resolveCourseSellerConnected(data.price, data.creatorDid));
 
         // Fetch next upcoming event for this course
@@ -163,6 +168,11 @@ export default function CourseDetailPage() {
 
       if (!res.ok) {
         const err = await res.json();
+        if (err.code === SELLER_NO_CARD_RAIL) {
+          // The creator has no card rail: hide the enroll button; the plain message takes its place.
+          setSellerConnected(false);
+          return;
+        }
         toast.error(err.error || 'Enrollment failed');
         return;
       }
@@ -244,6 +254,11 @@ export default function CourseDetailPage() {
                 ▶ Present
               </Link>
             )}
+            {course.isCreator && course.price > 0 && !sellerConnected && (
+              <p className="w-full text-sm text-yellow-600 dark:text-yellow-400">
+                {CREATOR_NO_CARD_RAIL_MESSAGE}
+              </p>
+            )}
             {(() => {
               const enrollButtonText = (() => {
                 if (enrolling) return 'Loading...';
@@ -277,7 +292,7 @@ export default function CourseDetailPage() {
               );
               if (course.price > 0 && !sellerConnected) return (
               <p className="text-sm text-gray-500 italic px-1">
-                Payments not yet available
+                {NO_CARD_RAIL_MESSAGE}
               </p>
               );
               if (course.isAuthenticated) return (
