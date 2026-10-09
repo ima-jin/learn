@@ -54,6 +54,8 @@ export const ENV_VARS = [
     'The one Postgres schema this app owns. Fixed to `learn` — the existing prod/dev schema; never change it.', 'learn'),
   same('SESSION_SECRET', 'required', 'runtime',
     'HS256 key for the session cookie (@ima-jin/auth-client). 32+ random characters, e.g. `openssl rand -hex 32`; separate per environment.', '(32+ random chars)', { secret: true }),
+  same('WEBHOOK_SECRET', 'required', 'runtime',
+    'Bearer secret the kernel presents to POST /api/webhook when a paid course checkout completes (ima-jin/learn#13). Must equal the kernel\'s LEARN_WEBHOOK_SECRET. 32+ random characters, e.g. `openssl rand -hex 32`; separate per environment. With it unset the webhook rejects every call, so a paid enrollment is never created.', '(32+ random chars)', { secret: true }),
   entry('IMAJIN_AUTH_URL', 'required', 'runtime',
     'Kernel base URL (no path) the session helpers use for sign-in/session validation.',
     'https://dev-jin.imajin.ai', 'https://jin.imajin.ai'),
@@ -216,9 +218,11 @@ function checkIdentity(get, errors) {
   if (PLACEHOLDER.test(appId)) {
     errors.push('NEXT_PUBLIC_IMAJIN_APP_ID is still a placeholder — use the registry id from registration (docs/REGISTRATION.md).');
   }
-  const secret = get('SESSION_SECRET');
-  if (secret !== '' && (PLACEHOLDER.test(secret) || secret.length < MIN_SESSION_SECRET_LENGTH)) {
-    errors.push(`SESSION_SECRET must be a real secret of at least ${MIN_SESSION_SECRET_LENGTH} characters (openssl rand -hex 32), not a placeholder.`);
+  for (const name of ['SESSION_SECRET', 'WEBHOOK_SECRET']) {
+    const secret = get(name);
+    if (secret !== '' && (PLACEHOLDER.test(secret) || secret.length < MIN_SESSION_SECRET_LENGTH)) {
+      errors.push(`${name} must be a real secret of at least ${MIN_SESSION_SECRET_LENGTH} characters (openssl rand -hex 32), not a placeholder.`);
+    }
   }
 }
 

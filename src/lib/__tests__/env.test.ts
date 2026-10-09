@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { authServiceUrl, payServiceUrl, thisAppHost } from '../env';
+import { appBaseUrl, authServiceUrl, payServiceUrl, thisAppHost, webhookSecret } from '../env';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -39,5 +39,31 @@ describe('payServiceUrl', () => {
     expect(payServiceUrl()).toBe('https://k.test/pay');
     vi.stubEnv('IMAJIN_KERNEL_URL', '');
     expect(payServiceUrl()).toBeNull();
+  });
+});
+
+describe('webhookSecret', () => {
+  it('reads WEBHOOK_SECRET, null when unset or empty', () => {
+    vi.stubEnv('WEBHOOK_SECRET', 'shh');
+    expect(webhookSecret()).toBe('shh');
+    vi.stubEnv('WEBHOOK_SECRET', '');
+    expect(webhookSecret()).toBeNull();
+  });
+});
+
+describe('appBaseUrl', () => {
+  it('is NEXT_PUBLIC_APP_URL (which already carries the base path), without a trailing slash', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://jin.imajin.ai/learn');
+    expect(appBaseUrl('https://ignored.test')).toBe('https://jin.imajin.ai/learn');
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://jin.imajin.ai/learn/');
+    expect(appBaseUrl('')).toBe('https://jin.imajin.ai/learn');
+  });
+
+  it('falls back to the request origin plus NEXT_PUBLIC_BASE_PATH', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', '');
+    vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '/learn');
+    expect(appBaseUrl('https://learn.test')).toBe('https://learn.test/learn');
+    vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '');
+    expect(appBaseUrl('https://learn.test')).toBe('https://learn.test');
   });
 });

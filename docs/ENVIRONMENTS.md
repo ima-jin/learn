@@ -46,6 +46,7 @@ Missing any of these and `scripts/check-env.mjs` fails the deploy before anythin
 | `DATABASE_URL` **(secret)** | runtime | `postgres://<role>:<password>@localhost:5432/<dev_db>` | `postgres://<role>:<password>@localhost:5432/<prod_db>` | Postgres connection string for this app's own database (also read by drizzle-kit and scripts/migrate-baseline.mjs). |
 | `APP_DB_SCHEMA` | runtime | `learn` | `learn` | The one Postgres schema this app owns. Fixed to `learn` — the existing prod/dev schema; never change it. |
 | `SESSION_SECRET` **(secret)** | runtime | (32+ random chars) | (32+ random chars) | HS256 key for the session cookie (@ima-jin/auth-client). 32+ random characters, e.g. `openssl rand -hex 32`; separate per environment. |
+| `WEBHOOK_SECRET` **(secret)** | runtime | (32+ random chars) | (32+ random chars) | Bearer secret the kernel presents to POST /api/webhook when a paid course checkout completes (ima-jin/learn#13). Must equal the kernel's LEARN_WEBHOOK_SECRET. 32+ random characters, e.g. `openssl rand -hex 32`; separate per environment. With it unset the webhook rejects every call, so a paid enrollment is never created. |
 | `IMAJIN_AUTH_URL` | runtime | `https://dev-jin.imajin.ai` | `https://jin.imajin.ai` | Kernel base URL (no path) the session helpers use for sign-in/session validation. |
 | `AUTH_SERVICE_URL` | runtime | `https://dev-jin.imajin.ai/auth` | `https://jin.imajin.ai/auth` | Kernel auth service base URL, including the /auth prefix. Verifies scoped app tokens and receives learn.* attestations. |
 | `IMAJIN_KERNEL_URL` | runtime | `https://dev-jin.imajin.ai` | `https://jin.imajin.ai` | Kernel base URL (no path). Used to fetch this app's signing key at boot (claim / keystore) and as the PAY_SERVICE_URL fallback. |
@@ -148,6 +149,9 @@ DATABASE_URL=postgres://learn:CHANGE_ME@localhost:5432/imajin_dev
 APP_DB_SCHEMA=learn
 # 32+ random chars, separate per environment: openssl rand -hex 32
 SESSION_SECRET=REPLACE_ME
+# Bearer secret the kernel presents to POST /api/webhook for a paid course checkout; must equal the
+# kernel's LEARN_WEBHOOK_SECRET. 32+ random chars, separate per environment: openssl rand -hex 32
+WEBHOOK_SECRET=REPLACE_ME
 
 IMAJIN_AUTH_URL=https://dev-jin.imajin.ai
 AUTH_SERVICE_URL=https://dev-jin.imajin.ai/auth
@@ -195,6 +199,9 @@ DATABASE_URL=postgres://learn:CHANGE_ME@localhost:5432/imajin_prod
 APP_DB_SCHEMA=learn
 # 32+ random chars, separate per environment: openssl rand -hex 32
 SESSION_SECRET=REPLACE_ME
+# Bearer secret the kernel presents to POST /api/webhook for a paid course checkout; must equal the
+# kernel's LEARN_WEBHOOK_SECRET. 32+ random chars, separate per environment: openssl rand -hex 32
+WEBHOOK_SECRET=REPLACE_ME
 
 IMAJIN_AUTH_URL=https://jin.imajin.ai
 AUTH_SERVICE_URL=https://jin.imajin.ai/auth

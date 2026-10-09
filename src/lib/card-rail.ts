@@ -10,6 +10,12 @@
  * Learn has no e-Transfer path, so the message offers none.
  */
 
+/**
+ * The `rail` the kernel puts on its paid-checkout notification when the payment was collected on the
+ * seller's OWN Stripe account and the kernel has already settled it (ima-jin/imajin-ai#2773).
+ */
+export const STRIPE_BYO_RAIL = 'stripe-byo';
+
 /** Pay's stable code when the course creator has no card rail (no connected Stripe key). */
 export const SELLER_NO_CARD_RAIL = 'SELLER_NO_CARD_RAIL';
 
