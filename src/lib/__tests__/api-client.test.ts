@@ -42,7 +42,7 @@ describe('learnFetch', () => {
     const minted = calls[0];
     expect(minted.url).toBe(`${AUTH}/auth/api/tokens/app`);
     expect(minted.init).toMatchObject({ method: 'POST', credentials: 'include' });
-    expect(JSON.parse(minted.init?.body as string)).toEqual({ aud: 'learn.test', scopes: [] });
+    expect(JSON.parse(minted.init?.body as string)).toEqual({ aud: 'learn', scopes: [] });
 
     expect(apiCalls()).toHaveLength(1);
     expect(apiCalls()[0].url).toBe('/api/my/courses');

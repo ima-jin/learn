@@ -1,9 +1,10 @@
 import { apiFetch } from '@ima-jin/config';
+import { APP_SLUG } from '@/lib/env';
 
 /**
  * Browser-side client for this app's own `/api/*` routes, speaking the
  * app-token contract end to end (#1974 / #1069): it mints a short-lived
- * app token — scoped to THIS app's host as `aud` — from the visitor's kernel
+ * app token — scoped to THIS app's registry slug as `aud` (imajin-ai#2706) — from the visitor's kernel
  * session via `POST {kernel}/auth/api/tokens/app`, and sends it as
  * `Authorization: Bearer`. The routes verify it with
  * `requireSessionOrAppToken`. No token (signed out, kernel unreachable, app
@@ -37,7 +38,7 @@ async function mintAppToken(): Promise<string | null> {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aud: globalThis.location.host, scopes: [] }),
+      body: JSON.stringify({ aud: APP_SLUG, scopes: [] }),
     });
     if (!response.ok) return null;
 

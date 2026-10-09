@@ -1,5 +1,5 @@
 import { requireSessionOrAppToken } from '@ima-jin/auth';
-import { thisAppHost } from '@/lib/env';
+import { APP_SLUG } from '@/lib/env';
 
 /**
  * This app's entire inbound-auth surface, deliberately funneled through two
@@ -11,8 +11,8 @@ import { thisAppHost } from '@/lib/env';
  * a one-file change, not a route-by-route migration.
  *
  * `requireSessionOrAppToken` accepts EITHER a scoped
- * `Authorization: Bearer <app-token>` (verified against this app's own host
- * as `aud`) OR the kernel session cookie as a migration fallback.
+ * `Authorization: Bearer <app-token>` (verified against this app's registry
+ * slug as `aud`, imajin-ai#2706) OR the kernel session cookie as a migration fallback.
  *
  * The caller is identified by a single DID. The in-monorepo version also
  * resolved `X-Acting-As` group impersonation and the soft-DID/hard-DID tier
@@ -28,6 +28,13 @@ export interface AuthenticatedCaller {
   via: 'token' | 'cookie';
   /** The raw app token, present only when `via === 'token'`. Used to act for the caller against the kernel. */
   appToken: string | null;
+  /**
+   * Owner DID when the caller is a registered agent acting under `X-Acting-For`
+   * (agent delegation, ima-jin/imajin-ai#2360). Always undefined today: the
+   * published `requireSessionOrAppToken` result does not surface it (see
+   * docs/ARCHITECTURE.md). The delegation policy reads it as soon as it does.
+   */
+  actingFor?: string | null;
 }
 
 export type AuthenticateResult = { auth: AuthenticatedCaller } | { error: string; status: number };
@@ -44,7 +51,7 @@ function bearerToken(request: Request): string | null {
 
 export async function authenticate(request: Request, options?: AuthenticateOptions): Promise<AuthenticateResult> {
   const result = await requireSessionOrAppToken(request, {
-    aud: thisAppHost(),
+    slug: APP_SLUG,
     requireScopes: options?.requireScopes,
   });
   if ('error' in result) {
