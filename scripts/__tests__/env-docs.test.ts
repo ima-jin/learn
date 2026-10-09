@@ -102,8 +102,8 @@ describe('env contract coverage', () => {
       for (const variable of ENV_VARS.filter((v) => v.secret)) {
         if (variable.name === 'DATABASE_URL') {
           expect(parsed.DATABASE_URL, file).toContain(':CHANGE_ME@');
-        } else if (variable.name === 'SESSION_SECRET') {
-          expect(parsed.SESSION_SECRET, file).toBe('REPLACE_ME');
+        } else if (variable.name === 'SESSION_SECRET' || variable.name === 'WEBHOOK_SECRET') {
+          expect(parsed[variable.name], file).toBe('REPLACE_ME');
         } else {
           expect(parsed[variable.name] ?? '', `${file} ${variable.name}`).toBe('');
         }
@@ -121,6 +121,7 @@ function filled(file: string) {
     IMAJIN_APP_DID: 'did:imajin:abc123',
     NEXT_PUBLIC_IMAJIN_APP_ID: 'app_abc123',
     SESSION_SECRET: SECRET,
+    WEBHOOK_SECRET: SECRET,
     DATABASE_URL: 'postgres://learn:s3cret@localhost:5432/imajin',
   };
 }
@@ -131,10 +132,11 @@ describe('validateEnv', () => {
     ['prod', '.env.prod.example'],
   ] as const)('accepts the shipped %s example apart from the placeholders', (target, file) => {
     const { errors } = validateEnv(parseEnv(read(file)), target);
-    expect(errors).toHaveLength(4);
+    expect(errors).toHaveLength(5);
     expect(errors.join('\n')).toMatch(/IMAJIN_APP_DID is still a placeholder/);
     expect(errors.join('\n')).toMatch(/NEXT_PUBLIC_IMAJIN_APP_ID is still a placeholder/);
     expect(errors.join('\n')).toMatch(/SESSION_SECRET must be a real secret/);
+    expect(errors.join('\n')).toMatch(/WEBHOOK_SECRET must be a real secret/);
     expect(errors.join('\n')).toMatch(/DATABASE_URL still contains a placeholder/);
   });
 
@@ -196,6 +198,12 @@ describe('validateEnv', () => {
     expect(errors).toMatch(/must start with did:imajin:/);
     expect(errors).toMatch(/must be the registry id/);
     expect(errors).toMatch(/SESSION_SECRET must be a real secret/);
+  });
+
+  it('requires the webhook secret the kernel presents, and rejects a weak or placeholder one', () => {
+    expect(errorsOf({ ...validProd(), WEBHOOK_SECRET: '' }, 'prod')).toMatch(/WEBHOOK_SECRET is required but not set/);
+    expect(errorsOf({ ...validProd(), WEBHOOK_SECRET: 'short' }, 'prod')).toMatch(/WEBHOOK_SECRET must be a real secret/);
+    expect(errorsOf({ ...validProd(), WEBHOOK_SECRET: 'REPLACE_ME' }, 'prod')).toMatch(/WEBHOOK_SECRET must be a real secret/);
   });
 
   it('warns (without failing) about first-boot, port and logging leftovers', () => {

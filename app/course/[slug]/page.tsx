@@ -55,6 +55,26 @@ interface UpcomingEvent {
   startsAt: string;
 }
 
+/**
+ * After paying, the learner lands back here (`?paid=1`) while the kernel's notification is still creating
+ * the enrollment. Poll for it briefly so they see "Start Learning" instead of an Enroll button — and so
+ * they don't pay twice.
+ */
+const PAID_POLL_INTERVAL_MS = 2000;
+const PAID_POLL_ATTEMPTS = 15;
+
+type PaidState = 'idle' | 'waiting' | 'delayed';
+
+/** The course as the caller currently sees it, or null when it cannot be read right now. */
+async function fetchCourse(slug: string): Promise<Course | null> {
+  try {
+    const res = await learnFetch(`/api/courses/${slug}`, { credentials: 'include' });
+    return res.ok ? ((await res.json()) as Course) : null;
+  } catch {
+    return null;
+  }
+}
+
 const contentTypeIcons: Record<string, string> = {
   markdown: '📝',
   exercise: '🛠️',
@@ -106,6 +126,7 @@ export default function CourseDetailPage() {
   const [enrolling, setEnrolling] = useState(false);
   const [upcomingEvent, setUpcomingEvent] = useState<UpcomingEvent | null>(null);
   const [sellerConnected, setSellerConnected] = useState(true);
+  const [paidState, setPaidState] = useState<PaidState>('idle');
 
   useEffect(() => {
     async function load() {
@@ -129,6 +150,31 @@ export default function CourseDetailPage() {
     }
     void load();
   }, [slug]);
+
+  // Back from a successful payment: wait for the kernel's notification to create the enrollment.
+  const courseLoaded = course !== null;
+  const alreadyEnrolled = Boolean(course?.enrollment);
+  useEffect(() => {
+    const paid = new URLSearchParams(globalThis.location.search).get('paid') === '1';
+    if (!paid || !courseLoaded || alreadyEnrolled) {
+      setPaidState('idle');
+      return;
+    }
+
+    setPaidState('waiting');
+    let attempts = 0;
+    const timer = setInterval(() => {
+      attempts += 1;
+      void fetchCourse(slug).then((fresh) => {
+        if (fresh) setCourse(fresh);
+      });
+      if (attempts >= PAID_POLL_ATTEMPTS) {
+        clearInterval(timer);
+        setPaidState('delayed');
+      }
+    }, PAID_POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [slug, courseLoaded, alreadyEnrolled]);
 
   // Auto-enroll after onboard email verification redirect
   useEffect(() => {
@@ -160,10 +206,8 @@ export default function CourseDetailPage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          successUrl: `${globalThis.location.origin}/course/${slug}`,
-          cancelUrl: `${globalThis.location.origin}/course/${slug}`,
-        }),
+        // No successUrl / cancelUrl: the server sends the learner back to this page (base path included).
+        body: JSON.stringify({}),
       });
 
       if (!res.ok) {
@@ -289,6 +333,13 @@ export default function CourseDetailPage() {
                   </>
                 )}
               </Link>
+              );
+              if (paidState !== 'idle') return (
+              <output className="text-sm text-gray-600 dark:text-gray-300 px-1">
+                {paidState === 'waiting'
+                  ? 'Payment received — setting up your enrollment…'
+                  : 'Your payment went through, but your enrollment is taking longer than usual. Refresh in a minute, or contact the course creator if it does not appear.'}
+              </output>
               );
               if (course.price > 0 && !sellerConnected) return (
               <p className="text-sm text-gray-500 italic px-1">

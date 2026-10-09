@@ -2,13 +2,14 @@ import { NextRequest } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { createLogger } from '@ima-jin/logger';
 import { db } from '@/db';
-import { enrollments, lessonProgress, lessons, modules } from '@/db/schema';
+import { enrollments } from '@/db/schema';
 import { authenticate } from '@/lib/auth/authenticate';
 import { cardRailFailure, payErrorCode } from '@/lib/card-rail';
 import { getCourseBySlug } from '@/lib/course-access';
-import { payServiceUrl } from '@/lib/env';
+import { enrollStudent } from '@/lib/enrollment';
+import { appBaseUrl, payServiceUrl } from '@/lib/env';
 import { emitLearnEvent } from '@/lib/events';
-import { errorResponse, generateId, jsonResponse } from '@/lib/utils';
+import { errorResponse, jsonResponse } from '@/lib/utils';
 
 const log = createLogger('learn');
 
@@ -44,29 +45,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   // Free enrollment
   if (!course.price || course.price === 0) {
-    const enrollment = {
-      id: generateId('enr'),
-      courseId: course.id,
-      studentDid: did,
-      paymentId: null,
-    };
-
-    await db.insert(enrollments).values(enrollment);
-
-    // Initialize progress for all lessons
-    const courseLessons = await db.select({ id: lessons.id })
-      .from(lessons)
-      .innerJoin(modules, eq(lessons.moduleId, modules.id))
-      .where(eq(modules.courseId, course.id));
-    if (courseLessons.length > 0) {
-      await db.insert(lessonProgress).values(
-        courseLessons.map(l => ({
-          enrollmentId: enrollment.id,
-          lessonId: l.id,
-          status: 'not_started',
-        }))
-      );
-    }
+    // Creates the enrollment and seeds progress for every lesson — idempotent on (course, student).
+    const { enrollment } = await enrollStudent({ courseId: course.id, studentDid: did, paymentId: null });
 
     // Best-effort domain event via the kernel's public attestation API.
     emitLearnEvent({
@@ -90,8 +70,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   const body = await request.json().catch(() => ({}));
   const origin = request.headers.get('origin') || '';
-  const successUrl = body.successUrl || `${origin}/api/courses/${slug}/enroll/callback`;
-  const cancelUrl = body.cancelUrl || `${origin}/${slug}`;
+  // Both land on the course page. `paid=1` tells it the learner is back from a successful payment while
+  // the kernel's notification (POST /api/webhook) is still creating the enrollment.
+  const coursePageUrl = `${appBaseUrl(origin)}/course/${slug}`;
+  const successUrl = body.successUrl || `${coursePageUrl}?paid=1`;
+  const cancelUrl = body.cancelUrl || coursePageUrl;
 
   try {
     const checkoutResponse = await fetch(`${payUrl}/api/checkout`, {
@@ -114,6 +97,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         successUrl,
         cancelUrl,
         metadata: {
+          // `service` is what the kernel routes its paid-checkout notification on; `source` predates it.
+          service: 'learn',
           source: 'learn',
           courseId: course.id,
           studentDid: did,

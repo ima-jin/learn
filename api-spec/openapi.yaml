@@ -33,6 +33,13 @@ components:
       description: >
         Migration fallback: the kernel's shared session cookie, validated
         against the kernel. Carries no scopes.
+    webhookAuth:
+      type: http
+      scheme: bearer
+      description: >
+        Server-to-server only: the kernel presents `Authorization: Bearer <secret>` where the secret is
+        this app's `WEBHOOK_SECRET` (the kernel's `LEARN_WEBHOOK_SECRET`). Compared in constant time;
+        with no secret configured every call is rejected.
     bearerAuth:
       type: http
       scheme: bearer
@@ -132,6 +139,98 @@ paths:
                     description: >
                       False in unclaimed boot mode (#2427) — this app has no
                       signing identity yet. See /claim.
+
+  /api/webhook:
+    post:
+      operationId: postPaidCheckoutWebhook
+      summary: Paid checkout notification from the kernel (creates the enrollment)
+      description: >
+        Called by the kernel's pay service when a course-enrollment checkout is paid. Authenticated with
+        a Bearer secret (not a user session). Only a payment the kernel settled on the course creator's
+        own Stripe account (`rail: stripe-byo`) enrolls: the kernel-attested top-level `sellerDid` must
+        be the course's creator and the amount collected must cover the course price in the course's
+        currency. Idempotent — a redelivery returns the existing enrollment (200) instead of creating
+        a second one (201). Any other event, or a payment on another rail, is acknowledged (200,
+        `enrolled: false`) without enrolling anyone.
+      tags: [learn]
+      security:
+        - webhookAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: { type: string, example: payment.succeeded }
+                sessionId: { type: string, description: Stripe Checkout session id }
+                paymentId: { type: string, description: Stripe payment intent id }
+                rail: { type: string, example: stripe-byo }
+                sellerDid:
+                  type: string
+                  description: >
+                    Kernel-attested DID whose own Stripe account collected the payment. Unlike
+                    `metadata.sellerDid`, the checkout caller cannot choose it.
+                metadata:
+                  type: object
+                  properties:
+                    courseId: { type: string }
+                    studentDid: { type: string }
+                    amount: { type: integer, description: "Amount collected, minor units" }
+                    currency: { type: string, example: CAD }
+      responses:
+        "200":
+          description: Acknowledged — already enrolled (replay), or nothing to enroll
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received: { type: boolean, example: true }
+                  enrolled: { type: boolean }
+                  created: { type: boolean, example: false }
+                  enrollmentId: { type: string }
+        "201":
+          description: Enrollment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received: { type: boolean, example: true }
+                  enrolled: { type: boolean, example: true }
+                  created: { type: boolean, example: true }
+                  enrollmentId: { type: string }
+        "400":
+          description: Malformed body, or `metadata.courseId` / `metadata.studentDid` missing
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Missing or wrong Bearer secret, or no secret configured
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: The payment was not collected on the course creator's own Stripe account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: The amount collected does not cover the course price
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Processing failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/claim:
     post:
@@ -417,7 +516,10 @@ paths:
         For free courses, creates enrollment immediately (and seeds
         `not_started` progress for every lesson). For paid courses, opens a
         checkout session through the kernel's pay service and returns its
-        redirect URL; the enrollment itself is not created by this call.
+        redirect URL; the enrollment itself is not created by this call — the
+        kernel notifies `POST /api/webhook` once the payment completes, and that
+        creates it. When `successUrl` / `cancelUrl` are omitted they default to this
+        app's course page (`/course/{slug}`; success adds `?paid=1`).
         The paid checkout is charged on the course creator's OWN Stripe account (their
         connected key; there is no Stripe Connect). A creator with no connected key gets
         400 with `code: SELLER_NO_CARD_RAIL`, and a creator whose Stripe account would
@@ -444,10 +546,10 @@ paths:
               properties:
                 successUrl:
                   type: string
-                  description: Redirect URL after successful payment (paid courses only)
+                  description: Redirect URL after successful payment (paid courses only). Defaults to the course page with `?paid=1`.
                 cancelUrl:
                   type: string
-                  description: Redirect URL if payment is cancelled (paid courses only)
+                  description: Redirect URL if payment is cancelled (paid courses only). Defaults to the course page.
       responses:
         "200":
           description: Already enrolled, or paid course checkout URL

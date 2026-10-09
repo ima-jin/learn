@@ -202,6 +202,11 @@ Full text: `ima-jin/conventions/ISSUE-CONVENTIONS.md`. This §7 is kept in sync 
 - **Card rail:** a paid enrollment is charged on the course creator's OWN Stripe account (no Stripe Connect). A creator
   with no connected key gets `SELLER_NO_CARD_RAIL` (`src/lib/card-rail.ts`): the enroll route answers a plain 400 and
   the course page hides the enroll button (ima-jin/imajin-ai#2773). Learn has no e-Transfer path.
+- **Paid enrollment:** the kernel notifies `POST /api/webhook` when a paid course checkout completes
+  (`app/api/webhook/route.ts`, ima-jin/learn#13). Bearer `WEBHOOK_SECRET` (= the kernel's `LEARN_WEBHOOK_SECRET`),
+  constant-time, fail-closed. Only `rail: "stripe-byo"` enrolls, and only when the kernel-attested top-level `sellerDid`
+  is the course's creator and the amount covers the price — never trust `metadata.sellerDid`, the checkout caller
+  chooses it. Enrollment is idempotent on (course, student) via `src/lib/enrollment.ts`.
 - **Domain events it emits (via kernel API):** `learn.enrolled` (free enrollment) and `learn.completed` (last lesson
   done), as app-signed attestations delegated by the student through the kernel's public
   `POST /auth/api/attestations` (`src/lib/events.ts`, `submitDelegatedAttestation`). Best-effort: needs the caller's

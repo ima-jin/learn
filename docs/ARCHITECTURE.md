@@ -68,9 +68,13 @@ contract or fixes to defects in the original:
   `limit`/`offset` tolerate garbage; PATCHing `imageUrl` / `imageAssetId` / `eventSlug` / `courseType` now actually
   persists (the original wrote snake_case keys drizzle silently ignores); the unimplemented `tag` filter is no longer
   advertised in the spec.
-- **Known gap carried over, not introduced here:** a paid checkout's `successUrl` defaults to
-  `/api/courses/{slug}/enroll/callback`, which has never existed in either codebase, and nothing creates the enrollment
-  after payment. Out of scope for a parity port.
+- **Paid enrollment (ima-jin/learn#13).** The paid checkout's `successUrl` used to default to
+  `/api/courses/{slug}/enroll/callback`, which never existed in either codebase, and nothing created the enrollment
+  after payment. Now the kernel notifies `POST /api/webhook` (Bearer `WEBHOOK_SECRET`, constant-time, fail-closed) when
+  a checkout is paid on the course creator's own Stripe account, and that creates the enrollment idempotently
+  (`src/lib/enrollment.ts`). The success URL lands on the course page (`?paid=1`), which waits briefly for the
+  notification instead of showing an Enroll button again. The webhook trusts the kernel-attested `sellerDid`, not
+  caller-supplied checkout metadata, and checks the amount against the course price.
 
 ## Open decisions
 

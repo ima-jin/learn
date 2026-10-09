@@ -125,9 +125,32 @@ describe('POST /api/courses/[slug]/enroll', () => {
           quantity: 1,
           metadata: { type: 'course_enrollment', courseId: 'crs_1', studentDid: STUDENT },
         }],
-        successUrl: 'https://learn.test/api/courses/intro/enroll/callback',
-        cancelUrl: 'https://learn.test/intro',
-        metadata: { source: 'learn', courseId: 'crs_1', studentDid: STUDENT },
+        // The learner comes back to the real course page; `paid=1` tells it to wait for the enrollment.
+        successUrl: 'https://learn.test/course/intro?paid=1',
+        cancelUrl: 'https://learn.test/course/intro',
+        // `service` is what the kernel routes its paid-checkout notification (POST /api/webhook) on.
+        metadata: { service: 'learn', source: 'learn', courseId: 'crs_1', studentDid: STUDENT },
+      });
+    });
+
+    it('never points the learner at the removed enroll callback route', async () => {
+      await enroll({ did: STUDENT, headers: { origin: 'https://learn.test' } });
+      const checkout = kernel.calls.find((c) => c.url === `${PAY_URL}/api/checkout`);
+      expect(JSON.stringify(checkout?.body)).not.toContain('/enroll/callback');
+    });
+
+    it('keeps the app mount path in the default URLs (NEXT_PUBLIC_APP_URL carries it)', async () => {
+      // Same host, so the scoped app token still verifies; the path is the Caddy mount.
+      vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://learn.test/learn');
+      try {
+        await enroll({ did: STUDENT, headers: { origin: 'https://learn.test' } });
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      const checkout = kernel.calls.find((c) => c.url === `${PAY_URL}/api/checkout`);
+      expect(checkout?.body).toMatchObject({
+        successUrl: 'https://learn.test/learn/course/intro?paid=1',
+        cancelUrl: 'https://learn.test/learn/course/intro',
       });
     });
 
