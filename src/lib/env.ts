@@ -3,17 +3,12 @@
  * no hard-coded kernel URLs anywhere else in this app.
  */
 
-/** This app's own host, used as the `aud` for scoped app-token verification. */
-export function thisAppHost(): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL;
-  const fallback = 'learn.imajin.ai';
-  if (!base) return fallback;
-  try {
-    return new URL(base).host;
-  } catch {
-    return fallback;
-  }
-}
+/**
+ * This app's registry slug — the `aud` scoped app tokens are minted and verified
+ * against. Never a host: path-routed apps share one (imajin-ai#2706);
+ * `@ima-jin/auth` also honours an `IMAJIN_APP_AUD` override.
+ */
+export const APP_SLUG = 'learn';
 
 /** Base URL of the kernel's auth service (includes the `/auth` prefix), or null when unset. */
 export function authServiceUrl(): string | null {
