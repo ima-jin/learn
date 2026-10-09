@@ -24,7 +24,7 @@ export interface EnrollStudentResult {
  * returns the existing enrollment instead of creating a duplicate. The enrollment and its progress rows
  * are written in one transaction, so a replay can never find an enrollment without progress.
  */
-export async function enrollStudent(input: EnrollStudentInput): Promise<EnrollStudentResult> {
+export function enrollStudent(input: EnrollStudentInput): Promise<EnrollStudentResult> {
   return db.transaction(async (tx) => {
     const [inserted] = await tx
       .insert(enrollments)

@@ -335,11 +335,11 @@ export default function CourseDetailPage() {
               </Link>
               );
               if (paidState !== 'idle') return (
-              <p className="text-sm text-gray-600 dark:text-gray-300 px-1" role="status">
+              <output className="text-sm text-gray-600 dark:text-gray-300 px-1">
                 {paidState === 'waiting'
                   ? 'Payment received — setting up your enrollment…'
                   : 'Your payment went through, but your enrollment is taking longer than usual. Refresh in a minute, or contact the course creator if it does not appear.'}
-              </p>
+              </output>
               );
               if (course.price > 0 && !sellerConnected) return (
               <p className="text-sm text-gray-500 italic px-1">
