@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, vi } from 'vitest';
 import { resetDb } from './stubs/db';
 
-export const APP_HOST = 'learn.test';
+export const APP_AUD = 'learn';
 export const AUTH_URL = 'https://kernel.test/auth';
 export const PAY_URL = 'https://kernel.test/pay';
 export const REGISTRY_URL = 'https://kernel.test/registry';
@@ -49,8 +49,8 @@ type Handler = (kernel: FakeKernel, body: Record<string, unknown> | null, header
 const ENDPOINTS: Record<string, Handler> = {
   [`${AUTH_URL}/api/tokens/app/verify`]: (_kernel, body) => {
     const token = typeof body?.token === 'string' ? body.token : '';
-    if (!token.startsWith('tok:') || body?.aud !== APP_HOST) return jsonRes({ valid: false }, 401);
-    return jsonRes({ sub: token.slice(4), aud: APP_HOST, scopes: ['learn:test'] });
+    if (!token.startsWith('tok:') || body?.aud !== APP_AUD) return jsonRes({ valid: false }, 401);
+    return jsonRes({ sub: token.slice(4), aud: APP_AUD, scopes: ['learn:test'] });
   },
   // Legacy shared session cookie fallback: `imajin_session=good:<did>`.
   [`${AUTH_URL}/api/session`]: (_kernel, _body, headers) => {

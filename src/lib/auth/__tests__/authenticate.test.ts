@@ -12,7 +12,7 @@ describe('authenticate', () => {
       auth: { did: 'did:imajin:a', scopes: ['learn:test'], via: 'token', appToken: 'tok:did:imajin:a' },
     });
     const verify = kernel.calls.find((c) => c.url === `${AUTH_URL}/api/tokens/app/verify`);
-    expect(verify?.body).toEqual({ token: 'tok:did:imajin:a', aud: 'learn.test' });
+    expect(verify?.body).toEqual({ token: 'tok:did:imajin:a', aud: 'learn' });
   });
 
   it('rejects a token the kernel does not verify for this audience', async () => {

@@ -53,6 +53,13 @@ contract or fixes to defects in the original:
 - **No act-as / tier.** The app-token contract carries only a DID, so `X-Acting-As` group identity (and the .fair
   scope-fee lookup that depended on it) and the soft-vs-hard-DID gate on writes are gone — callers always act as
   themselves. Tracked kernel-side: ima-jin/imajin-ai#2639 (act-as), #2640 (tier).
+- **Delegation policy.** `DELETE` on a course, module and lesson (`learn.course.delete`, `learn.module.delete`,
+  `learn.lesson.delete`) runs the published `@ima-jin/auth/delegation-policy` helper (`src/lib/auth/delegation.ts`,
+  imajin-ai#2360): an agent acting under `X-Acting-For` gets 403 `AGENT_APPROVAL_REQUIRED` — it may propose, the
+  owner countersigns. The app-token result does not surface `actingFor` yet (SDK gap), so the hook is wired but only
+  fires once `authenticate()` populates `AuthenticatedCaller.actingFor`.
+- **Token audience is the slug.** Scoped app tokens are minted and verified with `aud = 'learn'` (imajin-ai#2706),
+  required by `@ima-jin/auth` >= 0.8.15.
 - **Student emails are not released.** The roster resolves handle/display name through the kernel profile service
   *without* a service-scope credential, so `email` is always `null` (learn holds no kernel secret).
 - **Events** are emitted as delegated, app-signed attestations (issuer = this app, delegator/subject = the student, the
