@@ -199,6 +199,9 @@ Full text: `ima-jin/conventions/ISSUE-CONVENTIONS.md`. This §7 is kept in sync 
   ported column-for-column from the kernel's shared migrations; the kernel no longer owns them.
 - **The real-world loop it instruments:** creator publishes a course → student enrolls (free, or paid via the
   kernel's settlement leg) → student completes lessons; completion is the record.
+- **Card rail:** a paid enrollment is charged on the course creator's OWN Stripe account (no Stripe Connect). A creator
+  with no connected key gets `SELLER_NO_CARD_RAIL` (`src/lib/card-rail.ts`): the enroll route answers a plain 400 and
+  the course page hides the enroll button (ima-jin/imajin-ai#2773). Learn has no e-Transfer path.
 - **Domain events it emits (via kernel API):** `learn.enrolled` (free enrollment) and `learn.completed` (last lesson
   done), as app-signed attestations delegated by the student through the kernel's public
   `POST /auth/api/attestations` (`src/lib/events.ts`, `submitDelegatedAttestation`). Best-effort: needs the caller's

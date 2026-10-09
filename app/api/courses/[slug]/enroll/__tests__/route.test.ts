@@ -144,6 +144,48 @@ describe('POST /api/courses/[slug]/enroll', () => {
       expect(await res.json()).toEqual({ error: 'Payment initiation failed' });
     });
 
+    describe('card rail refusals (#2773)', () => {
+      const refuse = (body: unknown, status: number) =>
+        kernel.respond.set('/api/checkout', () => Response.json(body, { status }));
+
+      it('answers a creator with no card rail with a plain 400 and the code, never "Payment initiation failed", and enrolls nobody', async () => {
+        refuse({ error: "This seller hasn't set up card payments", code: 'SELLER_NO_CARD_RAIL' }, 400);
+
+        const res = await enroll({ did: STUDENT });
+
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({
+          error: "Card payments aren't set up for this course yet. Please contact the course creator about another way to pay.",
+          code: 'SELLER_NO_CARD_RAIL',
+        });
+        expect(await db.select().from(enrollments)).toHaveLength(0);
+      });
+
+      it.each(['CARD_RAIL_KEY_MISSING', 'CARD_RAIL_KEY_REJECTED', 'CARD_RAIL_UNAVAILABLE', 'CARD_RAIL_REQUEST_REJECTED'])(
+        'answers %s with a plain 502 that names the creator\'s Stripe account',
+        async (code) => {
+          refuse({ error: 'x', code }, 502);
+
+          const res = await enroll({ did: STUDENT });
+
+          expect(res.status).toBe(502);
+          expect(await res.json()).toEqual({
+            error: "Card payment couldn't be started on the course creator's Stripe account. Please try again later or contact the course creator.",
+            code,
+          });
+        },
+      );
+
+      it('keeps "Payment initiation failed" for an unrelated pay error code', async () => {
+        refuse({ error: 'boom', code: 'SOMETHING_ELSE' }, 500);
+
+        const res = await enroll({ did: STUDENT });
+
+        expect(res.status).toBe(502);
+        expect(await res.json()).toEqual({ error: 'Payment initiation failed' });
+      });
+    });
+
     it('503s when the pay service is unreachable', async () => {
       kernel.respond.set('/api/checkout', () => {
         throw new Error('ECONNREFUSED');

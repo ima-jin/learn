@@ -418,6 +418,11 @@ paths:
         `not_started` progress for every lesson). For paid courses, opens a
         checkout session through the kernel's pay service and returns its
         redirect URL; the enrollment itself is not created by this call.
+        The paid checkout is charged on the course creator's OWN Stripe account (their
+        connected key; there is no Stripe Connect). A creator with no connected key gets
+        400 with `code: SELLER_NO_CARD_RAIL`, and a creator whose Stripe account would
+        not take the charge gets 502 with a `CARD_RAIL_*` code; both carry a plain
+        student-facing `error`.
         On free enrollment a `learn.enrolled` attestation is emitted
         best-effort (only when the caller used an app token, and only if they
         have granted this app the matching delegation) — a failed emit never
@@ -470,10 +475,20 @@ paths:
                   enrolled: { type: boolean, example: true }
                   enrollment: { $ref: "#/components/schemas/Enrollment" }
         "400":
-          description: Course not available for enrollment
+          description: >
+            Course not available for enrollment, or the course creator has no card rail
+            (`code: SELLER_NO_CARD_RAIL`)
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string }
+                  code:
+                    type: string
+                    example: SELLER_NO_CARD_RAIL
+                    description: "Present when the creator has no card rail; the page hides the enroll button."
         "401":
           description: Not authenticated
           content:
@@ -485,10 +500,18 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "502":
-          description: Payment service error
+          description: >
+            Payment service error, or the course creator's Stripe account could not start the charge
+            (`code` is then one of `CARD_RAIL_KEY_MISSING`, `CARD_RAIL_KEY_REJECTED`,
+            `CARD_RAIL_UNAVAILABLE`, `CARD_RAIL_REQUEST_REJECTED`)
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string }
+                  code: { type: string, example: CARD_RAIL_UNAVAILABLE }
         "503":
           description: Payment service unreachable or not configured
           content:

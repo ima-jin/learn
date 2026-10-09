@@ -4,6 +4,7 @@ import { createLogger } from '@ima-jin/logger';
 import { db } from '@/db';
 import { enrollments, lessonProgress, lessons, modules } from '@/db/schema';
 import { authenticate } from '@/lib/auth/authenticate';
+import { cardRailFailure, payErrorCode } from '@/lib/card-rail';
 import { getCourseBySlug } from '@/lib/course-access';
 import { payServiceUrl } from '@/lib/env';
 import { emitLearnEvent } from '@/lib/events';
@@ -122,6 +123,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     if (!checkoutResponse.ok) {
       const error = await checkoutResponse.text();
+      // #2773: a creator with no card rail (or a Stripe account that would not take the charge) is not a
+      // server fault — answer plainly and pass the code through so the page can hide the enroll button.
+      const railFailure = cardRailFailure(payErrorCode(error));
+      if (railFailure) {
+        log.warn({ code: railFailure.code, courseId: course.id }, 'Course creator has no working card rail');
+        return Response.json({ error: railFailure.message, code: railFailure.code }, { status: railFailure.status });
+      }
       log.error({ err: error }, 'Pay service error');
       return errorResponse('Payment initiation failed', 502);
     }
