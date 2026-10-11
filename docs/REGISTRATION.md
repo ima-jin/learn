@@ -145,7 +145,7 @@ keystore. Nothing is minted on the server by hand and no key material is ever wr
 1. **Register** (section 1) against that environment's kernel (`https://dev-jin.imajin.ai` or `https://jin.imajin.ai`)
    with `callbackUrl` = `<NEXT_PUBLIC_APP_URL>/api/auth/callback` (`https://jin.imajin.ai/learn/api/auth/callback`
    on prod). Do **not** supply or keep the returned `keypair` anywhere in this repo. Record `appDid` and the registry
-   `id` (`app_…`), and make sure the app's host (`jin.imajin.ai` / `dev-jin.imajin.ai`) is in its `tokenAudiences`.
+   `id` (`app_…`), and make sure the app's slug (`learn`, never the shared host) is in its `tokenAudiences` (imajin-ai#2706).
 2. **Mint the claim code** on the kernel's `/jin` operator dashboard: open the app's `apps.provision` approval card
    and approve it. That produces a **one-time claim code**, shown once. (Lost keystore later? Approve again with
    `reissueClaim: true`; redeeming the new code revokes the old keystore's bootstrap key.)

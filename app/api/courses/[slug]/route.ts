@@ -3,6 +3,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { courses, enrollments, lessonProgress, lessons, modules } from '@/db/schema';
 import { authenticate, authenticateOptional } from '@/lib/auth/authenticate';
+import { enforceOwnerMutationPolicy } from '@/lib/auth/delegation';
 import { getCourseBySlug, withoutLessonContent } from '@/lib/course-access';
 import { errorResponse, jsonResponse, readJson } from '@/lib/utils';
 
@@ -154,6 +155,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   if ('error' in authResult) {
     return errorResponse(authResult.error, authResult.status);
   }
+
+  const delegationDenied = enforceOwnerMutationPolicy(authResult.auth, 'learn.course.delete', slug);
+  if (delegationDenied) return delegationDenied;
 
   const course = await getCourseBySlug(slug);
   if (!course) {

@@ -21,7 +21,7 @@ describe('POST /api/courses', () => {
   it('verifies the token against this app\'s own host as audience', async () => {
     await POST(makeRequest('POST', '/api/courses', { did: CREATOR, body: { title: 'X' } }));
     const verify = kernel.calls.find((c) => c.url === `${AUTH_URL}/api/tokens/app/verify`);
-    expect(verify?.body).toMatchObject({ aud: 'learn.test' });
+    expect(verify?.body).toMatchObject({ aud: 'learn' });
   });
 
   it('requires a title', async () => {
