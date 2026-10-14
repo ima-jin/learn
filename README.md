@@ -52,8 +52,7 @@ pnpm lint && pnpm typecheck && pnpm build
    `NEXT_PUBLIC_IMAJIN_APP_ID`, `SESSION_SECRET`, `APP_DB_SCHEMA`, `DATABASE_URL`, and
    `IMAJIN_KERNEL_URL`. This app refuses to start without `IMAJIN_APP_DID` set, or if a raw
    `IMAJIN_APP_PRIVATE_KEY` is present (see `instrumentation.ts`) — it fetches its own signing key
-   at boot via `@ima-jin/auth-client`'s `loadAppSigningKey()` instead. **Skip `IMAJIN_APP_CLAIM_CODE`
-   for now**: the operator path is *approve on `/jin` → open `<this app>/claim` → paste the code →
+   at boot via `@ima-jin/auth-client`'s `loadAppSigningKey()` instead. The only claim path is *approve on `/jin` → open `<this app>/claim` → paste the code →
    done* — see [`docs/REGISTRATION.md`](./docs/REGISTRATION.md).
 4. **Migrate this app's own database** (its own Postgres schema only — see
    [`docs/MIGRATIONS.md`](./docs/MIGRATIONS.md)):
@@ -77,11 +76,9 @@ ever hand-made or placed in `.env.local`:
    `appDid` and registry `id`.
 2. On the kernel's **`/jin`** operator dashboard, approve the app's `apps.provision` card — this mints a one-time
    **claim code** (shown once).
-3. Redeem the claim code — either way, only a `0600` bootstrap keystore is persisted and the code is spent:
-   - **Browser (normal path):** set `IMAJIN_APP_DID`, `NEXT_PUBLIC_IMAJIN_APP_ID` and a persistent
-     `IMAJIN_APP_KEYSTORE`, deploy, and the app boots in *unclaimed* mode. Open `<app>/claim` and paste the code.
-   - **First-boot env (advanced/CI):** put it in `.env.local` as `IMAJIN_APP_CLAIM_CODE`; the first boot redeems it
-     via `loadAppSigningKey()`. Then **delete the claim code**.
+3. Set `IMAJIN_APP_DID`, `NEXT_PUBLIC_IMAJIN_APP_ID` and a persistent `IMAJIN_APP_KEYSTORE`,
+   deploy, and the app boots in *unclaimed* mode. Open `/learn/claim` and paste the code in the browser.
+   Only a `0600` bootstrap keystore is persisted; the app goes live immediately without an env edit or restart.
 
 Details in the [operator runbook](./docs/REGISTRATION.md#minting-the-app-identity-operator-runbook).
 
@@ -191,13 +188,12 @@ route (#2427) — see "This app's own signing key" below.
 
 This app never reads a raw private key from env. `instrumentation.ts` fails loud at boot if
 `IMAJIN_APP_PRIVATE_KEY` is set, and instead calls `@ima-jin/auth-client`'s `loadAppSigningKey()`.
-Without a claim code or keystore yet, this app boots in **unclaimed mode** (#2427): every route
+Without a keystore yet, this app boots in **unclaimed mode** (#2427): every route
 except `/claim`, `/api/claim`, and `/api/health` serves a minimal "not claimed yet" page. The
 operator path: approve provisioning on the kernel's `/jin` → open `<this app>/claim` → paste the
-one-time claim code → done — no ssh, no env edit, no restart. A one-time `IMAJIN_APP_CLAIM_CODE`
-env var still works for automated/CI deploys and takes precedence when set. Either path bootstraps
-a local `0600` keystore (`IMAJIN_APP_KEYSTORE`); every later boot re-authenticates with that
-keystore, no operator action needed. See
+one-time claim code → done — no ssh, no env edit, no restart. This is the only claim path.
+The browser claim bootstraps a local `0600` keystore (`IMAJIN_APP_KEYSTORE`); every later boot
+re-authenticates with that keystore, no operator action needed. See
 [`docs/REGISTRATION.md`](./docs/REGISTRATION.md#4-claim-this-apps-own-signing-key-7-2427).
 
 ## Mounting under a path prefix

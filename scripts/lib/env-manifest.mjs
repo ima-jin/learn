@@ -22,7 +22,6 @@ export const BASE_PATH = '/learn';
 /**
  * status:
  *   required         must be set in the env file for a deployed instance
- *   first-boot       required only on the very first boot, then removed
  *   optional         read, has a safe default when unset
  *   forbidden        must NOT be set (the app refuses to boot if it is)
  *   runtime-set      injected by Next.js / pm2 — not set in the env file
@@ -53,9 +52,9 @@ export const ENV_VARS = [
   same('APP_DB_SCHEMA', 'required', 'runtime',
     'The one Postgres schema this app owns. Fixed to `learn` — the existing prod/dev schema; never change it.', 'learn'),
   same('SESSION_SECRET', 'required', 'runtime',
-    'HS256 key for the session cookie (@ima-jin/auth-client). 32+ random characters, e.g. `openssl rand -hex 32`; separate per environment.', '(32+ random chars)', { secret: true }),
+    'HS256 key for the session cookie (@ima-jin/auth-client). 32+ random characters, e.g. `provision through the approved secret-management tool`; separate per environment.', '(32+ random chars)', { secret: true }),
   same('WEBHOOK_SECRET', 'required', 'runtime',
-    'Bearer secret the kernel presents to POST /api/webhook when a paid course checkout completes (ima-jin/learn#13). Must equal the kernel\'s LEARN_WEBHOOK_SECRET. 32+ random characters, e.g. `openssl rand -hex 32`; separate per environment. With it unset the webhook rejects every call, so a paid enrollment is never created.', '(32+ random chars)', { secret: true }),
+    'Bearer secret the kernel presents to POST /api/webhook when a paid course checkout completes (ima-jin/learn#13). Must equal the kernel\'s LEARN_WEBHOOK_SECRET. 32+ random characters, e.g. `provision through the approved secret-management tool`; separate per environment. With it unset the webhook rejects every call, so a paid enrollment is never created.', '(32+ random chars)', { secret: true }),
   entry('IMAJIN_AUTH_URL', 'required', 'runtime',
     'Kernel base URL (no path) the session helpers use for sign-in/session validation.',
     'https://dev-jin.imajin.ai', 'https://jin.imajin.ai'),
@@ -93,8 +92,6 @@ export const ENV_VARS = [
   entry('IMAJIN_APP_DID', 'required', 'runtime',
     'This app\'s own did:imajin:… from registration (docs/REGISTRATION.md). instrumentation.ts refuses to boot without it. Not a secret.',
     'did:imajin:<dev app DID>', 'did:imajin:<prod app DID>'),
-  same('IMAJIN_APP_CLAIM_CODE', 'first-boot', 'runtime',
-    'One-time code from the kernel operator\'s /jin approval card. Needed only on the very first boot (no keystore yet) or a lost-keystore rebind; delete it after the first successful boot. check-env fails while there is neither a keystore nor a claim code.', '(only on first boot)', { secret: true }),
   entry('IMAJIN_APP_KEYSTORE', 'optional', 'runtime',
     'Path of this app\'s 0600 bootstrap keystore (never the vault key itself). Default ./.imajin/keystore.json relative to the process cwd. Must be writable, persist across deploys, and be separate for dev and prod.',
     '/home/jin/.imajin/learn.dev.keystore.json', '/home/jin/.imajin/learn.prod.keystore.json'),
@@ -221,7 +218,7 @@ function checkIdentity(get, errors) {
   for (const name of ['SESSION_SECRET', 'WEBHOOK_SECRET']) {
     const secret = get(name);
     if (secret !== '' && (PLACEHOLDER.test(secret) || secret.length < MIN_SESSION_SECRET_LENGTH)) {
-      errors.push(`${name} must be a real secret of at least ${MIN_SESSION_SECRET_LENGTH} characters (openssl rand -hex 32), not a placeholder.`);
+      errors.push(`${name} must be a real secret of at least ${MIN_SESSION_SECRET_LENGTH} characters (provision through the approved secret-management tool), not a placeholder.`);
     }
   }
 }
@@ -292,13 +289,10 @@ function checkFixedValues(get, errors) {
   }
 }
 
-function checkClaim(get, keystoreExists, errors, warnings) {
-  const claimCode = get('IMAJIN_APP_CLAIM_CODE');
-  if (claimCode !== '') {
-    warnings.push('IMAJIN_APP_CLAIM_CODE is set — it is needed on the first boot only; remove it once the app has booted once.');
-  } else if (keystoreExists === false) {
+function checkClaim(keystoreExists, warnings) {
+  if (keystoreExists === false) {
     warnings.push(
-      "No keystore found and IMAJIN_APP_CLAIM_CODE is not set — claim at /learn/claim after boot with the one-time code from the operator's /jin approval card (docs/REGISTRATION.md).",
+      "No keystore found — claim at /learn/claim after boot with the one-time code from the operator's /jin approval card (docs/REGISTRATION.md).",
     );
   }
 }
@@ -318,8 +312,8 @@ function checkDatabase(get, errors) {
  * `{ errors, warnings }`; messages name variables, never values.
  *
  * `options.keystoreExists` (true/false, omit to skip the check): whether this
- * app's bootstrap keystore is already on disk. With no keystore and no
- * IMAJIN_APP_CLAIM_CODE the app boots unclaimed (docs/REGISTRATION.md §4), so
+ * app's bootstrap keystore is already on disk. With no keystore the app
+ * boots unclaimed (docs/REGISTRATION.md §4), so
  * this only warns: the operator claims at /learn/claim after boot.
  * @param {Record<string, string | undefined>} env
  * @param {'prod' | 'dev'} target
@@ -341,7 +335,7 @@ export function validateEnv(env, target, options = {}) {
   checkIdentity(get, errors);
   checkTargetBinding(get, target, errors, warnings);
 
-  checkClaim(get, options.keystoreExists, errors, warnings);
+  checkClaim(options.keystoreExists, warnings);
 
   return { errors, warnings };
 }

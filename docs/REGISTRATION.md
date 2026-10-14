@@ -66,11 +66,10 @@ cp .env.example .env.local
 # fill in:
 #   IMAJIN_APP_DID=<appDid from the response above>
 #   NEXT_PUBLIC_IMAJIN_APP_ID=<id from the response above>
-#   SESSION_SECRET=$(openssl rand -hex 32)
+#   SESSION_SECRET=<provision through the approved secret-management tool>
 #   APP_DB_SCHEMA=<a name for this app's own Postgres schema — see docs/MIGRATIONS.md>
 #   DATABASE_URL=<this app's own Postgres connection string>
 #   IMAJIN_KERNEL_URL=<same host as IMAJIN_AUTH_URL above>
-#   IMAJIN_APP_CLAIM_CODE=<optional — leave unset and claim via <app>/claim in the browser instead, see §4>
 ```
 
 Without `IMAJIN_APP_DID` set, or with a raw `IMAJIN_APP_PRIVATE_KEY` still set, `pnpm dev` /
@@ -81,15 +80,14 @@ could ever authenticate.
 
 This app never reads a raw private key out of `.env`. Instead it fetches its own vault-minted
 signing key from the kernel, via `@ima-jin/auth-client`'s `loadAppSigningKey()`
-(`src/lib/signing-identity.ts`). There are two ways to complete that exchange:
+(`src/lib/signing-identity.ts`). The claim page is the only way to complete the first exchange:
 
-### The operator path (recommended): paste the code in the browser
+### The operator path: paste the code in the browser
 
 1. The kernel operator approves this app's provisioning on `/jin`. The approval card reveals a
    one-time claim code.
 2. Open `<this app's URL>/claim` in a browser.
-3. Paste the claim code (and the app DID, if the card shows one, to confirm you're claiming the
-   right app). Submit.
+3. Paste the claim code and submit. The server checks the returned app DID against this app's registration.
 
 That's it — no ssh, no env file edit, no restart. Behind the scenes, this app's own
 `app/api/claim/route.ts` calls the kernel's `POST /api/apps/claim` on your behalf, writes the
@@ -98,8 +96,8 @@ and hot-swaps the in-memory signing identity immediately — the app is claimed 
 (though a restart also works fine afterwards). `/claim` 404s once this succeeds; the code is spent
 and cannot be reused.
 
-This is only possible because this app boots in **unclaimed mode** when neither a keystore nor
-`IMAJIN_APP_CLAIM_CODE` is present: instead of crashing at boot, every route except `/claim`,
+This is only possible because this app boots in **unclaimed mode** when no keystore
+is present: instead of crashing at boot, every route except `/claim`,
 `/api/claim`, and `/api/health` serves a minimal "not claimed yet" page, and `/api/health` reports
 `{ claimed: false }`.
 
@@ -119,17 +117,9 @@ sound if both of these hold:
 
 Without a usable `X-Forwarded-For`, all callers share one coarse fallback bucket.
 
-### The advanced / CI path: an env var
-
-Automated deploys (a CI/seal pipeline, see `IMAJIN_APP_CLAIM_CODE` in `.env.example`) can still set
-`IMAJIN_APP_CLAIM_CODE` before first boot — `instrumentation.ts` resolves it the same way on
-startup, no browser step needed. This path still takes precedence: if the env var is set, it's
-used; if it's invalid, boot still fails loud rather than silently degrading. Delete it from
-`.env.local` once used, it's spent either way.
-
 ### Every later boot
 
-Once a keystore exists (from either path above), every later boot signs a fresh challenge with the
+Once a keystore exists (from the claim page), every later boot signs a fresh challenge with the
 persisted bootstrap key and fetches the signing key again — no claim code needed, no operator
 action required for an ordinary restart.
 
@@ -149,20 +139,14 @@ keystore. Nothing is minted on the server by hand and no key material is ever wr
 2. **Mint the claim code** on the kernel's `/jin` operator dashboard: open the app's `apps.provision` approval card
    and approve it. That produces a **one-time claim code**, shown once. (Lost keystore later? Approve again with
    `reissueClaim: true`; redeeming the new code revokes the old keystore's bootstrap key.)
-3. **Fill `.env.local`** from `.env.dev.example` / `.env.prod.example`: `IMAJIN_APP_DID` = `appDid`,
-   `NEXT_PUBLIC_IMAJIN_APP_ID` = the registry `id`, `IMAJIN_APP_CLAIM_CODE` = the code, `IMAJIN_APP_KEYSTORE` = a
+3. **Configure the public identity and keystore path**: `IMAJIN_APP_DID` = `appDid`,
+   `NEXT_PUBLIC_IMAJIN_APP_ID` = the registry `id`, and `IMAJIN_APP_KEYSTORE` = a persistent
    per-environment path outside the checkout (`/home/jin/.imajin/learn.<env>.keystore.json`).
-4. **Deploy** (`scripts/deploy.sh <dev|prod>`, [DEPLOY.md](./DEPLOY.md)). The first boot spends the claim code via
-   `loadAppSigningKey()` and persists only the 0600 bootstrap keystore.
-5. **Delete `IMAJIN_APP_CLAIM_CODE`** from `.env.local` (`check-env` warns while it is set). Every later boot
-   re-authenticates with the keystore alone — back the keystore up like a credential, never commit or copy it.
-
-> **Claim page.** learn has the in-app `/claim` page (ported from the template, #5): an operator can paste the code in
-> a browser instead of editing the env file — see §4 above.
-> Note that `scripts/check-env.mjs` (run by `scripts/deploy.sh`) still requires `IMAJIN_APP_CLAIM_CODE` while no keystore
-> exists, so a deploy-script first boot goes through the env var; the browser path applies when the app is started
-> without that gate (e.g. `pnpm start` / pm2 directly). The kernel side (`/jin` card → claim code → app DID + keystore)
-> is identical either way.
+4. **Deploy** through the deployment tool ([DEPLOY.md](./DEPLOY.md)). With no keystore,
+   `check-env` warns but permits deployment; the app boots unclaimed.
+5. **Claim in the browser** at `/learn/claim` using the code from `/jin`. The app goes live immediately:
+   the code is spent, a `0600` bootstrap keystore is persisted, and no env edit or restart is needed.
+   Every later boot re-authenticates with that keystore alone. Never commit, copy, or sync it.
 
 ## 5. List or manage your apps later
 

@@ -3,9 +3,12 @@ import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetSigningIdentityForTests } from '@/lib/signing-identity';
+import { bootstrapSigningIdentity, isAppClaimed, resetSigningIdentityForTests } from '@/lib/signing-identity';
 import { resetClaimRateLimitForTests } from '@/lib/claim-rate-limit';
 import { POST } from '../route';
+import { GET as health } from '../../health/route';
+import { middleware } from '../../../../middleware';
+import { NextRequest } from 'next/server';
 
 const KERNEL_URL = 'https://dev-jin.imajin.test';
 const RATE_LIMIT = 5;
@@ -34,13 +37,13 @@ describe('POST /api/claim', () => {
     workDir = await mkdtemp(join(tmpdir(), 'imajin-claim-route-'));
     vi.stubEnv('IMAJIN_KERNEL_URL', KERNEL_URL);
     vi.stubEnv('IMAJIN_APP_KEYSTORE', join(workDir, 'keystore.json'));
-    vi.stubEnv('IMAJIN_APP_CLAIM_CODE', '');
     vi.stubEnv('IMAJIN_APP_DID', '');
   });
 
   afterEach(async () => {
     resetSigningIdentityForTests();
     resetClaimRateLimitForTests();
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     await rm(workDir, { recursive: true, force: true });
@@ -53,7 +56,12 @@ describe('POST /api/claim', () => {
       publicKey: 'signing-public-key-hex',
     });
 
-    const response = await POST(postRequest({ claimCode: 'operator-pasted-code' }) as never);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await bootstrapSigningIdentity();
+    expect((await health().json()).claimed).toBe(false);
+    expect(await middleware(new NextRequest('http://localhost:3000/')).text()).toContain('/claim');
+
+    const response = await POST(postRequest({ claimCode: 'FAKE_BROWSER_CLAIM_CODE' }) as never);
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -62,6 +70,11 @@ describe('POST /api/claim', () => {
 
     const keystoreStat = await stat(join(workDir, 'keystore.json'));
     expect(keystoreStat.mode & 0o777).toBe(0o600);
+    expect(isAppClaimed()).toBe(true);
+    expect((await health().json()).claimed).toBe(true);
+    expect(middleware(new NextRequest('http://localhost:3000/')).headers.get('x-middleware-next')).toBe('1');
+    expect(middleware(new NextRequest('http://localhost:3000/claim')).status).toBe(404);
+    expect(log).not.toHaveBeenCalled();
   });
 
   it('rejects a missing claim code without calling the kernel', async () => {
@@ -74,13 +87,15 @@ describe('POST /api/claim', () => {
   });
 
   it('maps a kernel refusal to a generic 400 without leaking the kernel error body', async () => {
-    mockKernelClaim({ error: 'This claim code has already been redeemed' }, 410);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockKernelClaim({ error: 'Rejected FAKE_SPENT_CLAIM_CODE' }, 410);
 
-    const response = await POST(postRequest({ claimCode: 'spent-code' }) as never);
+    const response = await POST(postRequest({ claimCode: 'FAKE_SPENT_CLAIM_CODE' }) as never);
     const body = await response.json();
 
     expect(response.status).toBe(400);
-    expect(typeof body.error).toBe('string');
+    expect(body).toEqual({ error: 'Unable to redeem this claim code' });
+    expect(log.mock.calls).toEqual([['POST /api/claim: claim exchange failed']]);
   });
 
   it('404s once this app is already claimed', async () => {
@@ -89,9 +104,9 @@ describe('POST /api/claim', () => {
       privateKey: 'signing-private-key-hex',
       publicKey: 'signing-public-key-hex',
     });
-    await POST(postRequest({ claimCode: 'first-code' }) as never);
+    await POST(postRequest({ claimCode: 'FAKE_FIRST_CLAIM_CODE' }) as never);
 
-    const response = await POST(postRequest({ claimCode: 'second-code' }) as never);
+    const response = await POST(postRequest({ claimCode: 'FAKE_SECOND_CLAIM_CODE' }) as never);
 
     expect(response.status).toBe(404);
   });
@@ -100,10 +115,10 @@ describe('POST /api/claim', () => {
     mockKernelClaim({ error: 'Unrecognized claim code' }, 404);
 
     for (let attempt = 0; attempt < RATE_LIMIT; attempt += 1) {
-      await POST(postRequest({ claimCode: `attempt-${attempt}` }, { 'x-forwarded-for': '203.0.113.5' }) as never);
+      await POST(postRequest({ claimCode: 'FAKE_ATTEMPT_CLAIM_CODE' }, { 'x-forwarded-for': '203.0.113.5' }) as never);
     }
     const response = await POST(
-      postRequest({ claimCode: 'one-attempt-too-many' }, { 'x-forwarded-for': '203.0.113.5' }) as never
+      postRequest({ claimCode: 'FAKE_RATE_LIMIT_CLAIM_CODE' }, { 'x-forwarded-for': '203.0.113.5' }) as never
     );
 
     expect(response.status).toBe(429);
@@ -118,11 +133,11 @@ describe('POST /api/claim', () => {
     // loop would never trip the limit at all.
     for (let attempt = 0; attempt < RATE_LIMIT; attempt += 1) {
       await POST(
-        postRequest({ claimCode: `attempt-${attempt}` }, { 'x-forwarded-for': `10.0.0.${attempt}, 203.0.113.5` }) as never
+        postRequest({ claimCode: 'FAKE_ATTEMPT_CLAIM_CODE' }, { 'x-forwarded-for': `10.0.0.${attempt}, 203.0.113.5` }) as never
       );
     }
     const response = await POST(
-      postRequest({ claimCode: 'one-attempt-too-many' }, { 'x-forwarded-for': '10.0.0.99, 203.0.113.5' }) as never
+      postRequest({ claimCode: 'FAKE_RATE_LIMIT_CLAIM_CODE' }, { 'x-forwarded-for': '10.0.0.99, 203.0.113.5' }) as never
     );
 
     expect(response.status).toBe(429);
@@ -137,14 +152,14 @@ describe('POST /api/claim', () => {
     for (let attempt = 0; attempt < RATE_LIMIT; attempt += 1) {
       await POST(
         postRequest(
-          { claimCode: `attempt-${attempt}` },
+          { claimCode: 'FAKE_ATTEMPT_CLAIM_CODE' },
           { 'x-real-ip': `198.51.100.${attempt}`, 'x-forwarded-for': '203.0.113.5' }
         ) as never
       );
     }
     const response = await POST(
       postRequest(
-        { claimCode: 'one-attempt-too-many' },
+        { claimCode: 'FAKE_RATE_LIMIT_CLAIM_CODE' },
         { 'x-real-ip': '198.51.100.99', 'x-forwarded-for': '203.0.113.5' }
       ) as never
     );
@@ -160,13 +175,13 @@ describe('POST /api/claim', () => {
       publicKey: 'signing-public-key-hex',
     });
 
-    const response = await POST(postRequest({ claimCode: 'operator-pasted-code' }) as never);
+    const response = await POST(postRequest({ claimCode: 'FAKE_BROWSER_CLAIM_CODE' }) as never);
     const body = await response.json();
 
     expect(response.status).toBe(409);
     expect(body.expectedAppDid).toBe('did:imajin:this-app');
     expect(body.claimedAppDid).toBe('did:imajin:a-different-app');
-    expect(body.error).not.toContain('operator-pasted-code');
+    expect(body.error).not.toContain('FAKE_BROWSER_CLAIM_CODE');
     expect(existsSync(join(workDir, 'keystore.json'))).toBe(false);
   });
 });
