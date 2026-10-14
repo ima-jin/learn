@@ -68,7 +68,7 @@ pnpm lint && pnpm typecheck && pnpm build
    `/api/health` and `/api/spec` should respond immediately; `/api/me` returns your DID once
    you sign in through the header's "Sign in with Imajin" link.
 
-## Identity — minting the app DID (operator)
+## Identity — claiming the app DID (operator)
 
 Dev and prod are registered separately; each gets its own app DID, registry id, claim code and keystore. No key is
 ever hand-made or placed in `.env.local`:
