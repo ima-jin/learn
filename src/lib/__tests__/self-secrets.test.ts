@@ -12,10 +12,14 @@ const mocks = vi.hoisted(() => ({
   loadFromVault: vi.fn(),
   loadAppSigningKey: vi.fn(),
   readKeystore: vi.fn(),
+  cookieGet: vi.fn(),
 }));
 vi.mock('@ima-jin/auth-client', async (original) => ({
   ...await original<typeof import('@ima-jin/auth-client')>(),
   ...mocks,
+}));
+vi.mock('next/headers', () => ({
+  cookies: async () => ({ get: mocks.cookieGet }),
 }));
 
 const FAKE_FIRST = 'OBVIOUSLY_FAKE_SESSION_PLACEHOLDER_FIRST';
@@ -32,6 +36,7 @@ beforeEach(() => {
   vi.stubEnv('IMAJIN_APP_PRIVATE_KEY', '');
   vi.stubEnv('IMAJIN_APP_DID', 'did:imajin:learn-test');
   vi.stubEnv('IMAJIN_KERNEL_URL', 'https://kernel.test');
+  vi.stubEnv('IMAJIN_AUTH_URL', 'https://kernel.test');
   vi.stubEnv('IMAJIN_APP_KEYSTORE', '/test-only/learn.keystore.json');
   vi.stubEnv('SESSION_SECRET', '');
   mocks.readKeystore.mockReturnValue({ publicKey: 'FAKE_BOOTSTRAP_PUBLIC', privateKey: 'FAKE_BOOTSTRAP_PRIVATE' });
@@ -45,6 +50,7 @@ afterEach(() => {
   vi.resetAllMocks();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 describe('vault-only startup', () => {
@@ -69,6 +75,33 @@ describe('vault-only startup', () => {
     await register();
     expect(authConfig.secret).toBe(FAKE_FIRST);
     expect(process.env.SESSION_SECRET).toBe(FAKE_ENV);
+  });
+
+  it('serves the real callback and session handlers using the boot-loaded credential', async () => {
+    await register();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(user)));
+    vi.resetModules();
+    const callback = await import('../../../app/api/auth/callback/route');
+    const response = await callback.GET(new NextRequest(
+      'https://learn.test/api/auth/callback?attestation_id=test-attestation&user_did=did:imajin:test-user',
+    ));
+    expect(response.status).toBe(307);
+    const cookie = response.cookies.get('imajin_session');
+    expect(cookie?.httpOnly).toBe(true);
+    mocks.cookieGet.mockReturnValue(cookie);
+    const session = await import('../../../app/api/auth/session/route');
+    expect(await (await session.GET()).json()).toEqual(user);
+    expect(log).not.toHaveBeenCalled();
+    expect(process.env.SESSION_SECRET).toBe('');
+  });
+
+  it('sanitizes an unreachable kernel even when signing-key loading fails first', async () => {
+    mocks.loadAppSigningKey.mockRejectedValue(new Error(FAKE_ENV));
+    await expect(register()).rejects.toThrow(new SelfSecretsUnavailableError().message);
+    expect(mocks.loadFromVault).not.toHaveBeenCalled();
+    expect(isAppClaimed()).toBe(false);
+    expect(() => authConfig.secret).toThrow(SelfSecretsUnavailableError);
   });
 
   it('does not finish boot or publish a signing identity while vault loading is pending', async () => {
