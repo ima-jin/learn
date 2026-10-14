@@ -93,8 +93,9 @@ on deployed requests). It discovers active public keys through `AUTH_SERVICE_URL
 `.imajin/kernel-webhook-pins/`. No shared webhook credential is provisioned or copied.
 
 Missing, tampered, wrong-key, wrong-recipient, expired/future and consumed-nonce requests return 401 without
-reading or writing app records. Authenticated malformed JSON/non-object bodies return 400. The SDK permits
-timestamps within ±300 seconds and rejects duplicate nonces; a kernel retry must carry a fresh signature/nonce,
+reading or writing app records. Authenticated malformed JSON/non-object bodies return 400.
+Discovery, trust or storage failures return 503 without business processing so the kernel can retry.
+The SDK permits timestamps within ±300 seconds and rejects duplicate nonces; a kernel retry must carry a fresh signature/nonce,
 and enrollment remains idempotent on (course, student).
 
 Keep `.imajin/kernel-webhook-pins/` writable, separate per environment, and persistent across deploys; key

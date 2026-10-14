@@ -15,7 +15,10 @@ export async function authenticateKernelWebhook(request: Request): Promise<{ bod
       pinStore,
     });
   } catch (error) {
-    if (error instanceof KernelWebhookError && error.code === 'INVALID_BODY') {
+    if (!(error instanceof KernelWebhookError) || ['STORE', 'DISCOVERY', 'TRUST'].includes(error.code)) {
+      return { response: errorResponse('Webhook verification unavailable', 503) };
+    }
+    if (error.code === 'INVALID_BODY') {
       return { response: errorResponse('Invalid JSON body') };
     }
     return { response: errorResponse('Unauthorized', 401) };

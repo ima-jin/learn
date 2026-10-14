@@ -9,10 +9,10 @@ importers:
   .:
     dependencies:
       '@ima-jin/auth':
-        specifier: ^0.8.18
+        specifier: 0.8.18
         version: 0.8.18(drizzle-orm@0.45.3(@electric-sql/pglite@0.5.8)(postgres@3.4.9))(next@15.5.26(@types/node@20.19.43)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
       '@ima-jin/auth-client':
-        specifier: ^0.8.18
+        specifier: 0.8.18
         version: 0.8.18(next@15.5.26(@types/node@20.19.43)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
       '@ima-jin/config':
         specifier: ^0.8.13
