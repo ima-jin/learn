@@ -45,8 +45,8 @@ Missing any of these and `scripts/check-env.mjs` fails the deploy before anythin
 |---|---|---|---|---|
 | `DATABASE_URL` **(secret)** | runtime | `postgres://<role>:<password>@localhost:5432/<dev_db>` | `postgres://<role>:<password>@localhost:5432/<prod_db>` | Postgres connection string for this app's own database (also read by drizzle-kit and scripts/migrate-baseline.mjs). |
 | `APP_DB_SCHEMA` | runtime | `learn` | `learn` | The one Postgres schema this app owns. Fixed to `learn` — the existing prod/dev schema; never change it. |
-| `SESSION_SECRET` **(secret)** | runtime | (32+ random chars) | (32+ random chars) | HS256 key for the session cookie (@ima-jin/auth-client). 32+ random characters, e.g. `openssl rand -hex 32`; separate per environment. |
-| `WEBHOOK_SECRET` **(secret)** | runtime | (32+ random chars) | (32+ random chars) | Bearer secret the kernel presents to POST /api/webhook when a paid course checkout completes (ima-jin/learn#13). Must equal the kernel's LEARN_WEBHOOK_SECRET. 32+ random characters, e.g. `openssl rand -hex 32`; separate per environment. With it unset the webhook rejects every call, so a paid enrollment is never created. |
+| `SESSION_SECRET` **(secret)** | runtime | (32+ random chars) | (32+ random chars) | HS256 key for the session cookie (@ima-jin/auth-client). 32+ random characters, e.g. `provision through the approved secret-management tool`; separate per environment. |
+| `WEBHOOK_SECRET` **(secret)** | runtime | (32+ random chars) | (32+ random chars) | Bearer secret the kernel presents to POST /api/webhook when a paid course checkout completes (ima-jin/learn#13). Must equal the kernel's LEARN_WEBHOOK_SECRET. 32+ random characters, e.g. `provision through the approved secret-management tool`; separate per environment. With it unset the webhook rejects every call, so a paid enrollment is never created. |
 | `IMAJIN_AUTH_URL` | runtime | `https://dev-jin.imajin.ai` | `https://jin.imajin.ai` | Kernel base URL (no path) the session helpers use for sign-in/session validation. |
 | `AUTH_SERVICE_URL` | runtime | `https://dev-jin.imajin.ai/auth` | `https://jin.imajin.ai/auth` | Kernel auth service base URL, including the /auth prefix. Verifies scoped app tokens and receives learn.* attestations. |
 | `IMAJIN_KERNEL_URL` | runtime | `https://dev-jin.imajin.ai` | `https://jin.imajin.ai` | Kernel base URL (no path). Used to fetch this app's signing key at boot (claim / keystore) and as the PAY_SERVICE_URL fallback. |
@@ -60,13 +60,11 @@ Missing any of these and `scripts/check-env.mjs` fails the deploy before anythin
 | `NEXT_PUBLIC_DOMAIN` | build | `imajin.ai` | `imajin.ai` | Companion to NEXT_PUBLIC_SERVICE_PREFIX: the platform domain. |
 | `IMAJIN_APP_DID` | runtime | `did:imajin:<dev app DID>` | `did:imajin:<prod app DID>` | This app's own did:imajin:… from registration (docs/REGISTRATION.md). instrumentation.ts refuses to boot without it. Not a secret. |
 
-## First boot only
+## First claim
 
-Optional: set once, then delete. With neither a keystore nor a claim code, `check-env` only warns and the app boots unclaimed — claim it at `/learn/claim` after boot.
-
-| Variable | When | Dev | Prod | What it does |
-|---|---|---|---|---|
-| `IMAJIN_APP_CLAIM_CODE` **(secret)** | runtime | (only on first boot) | (only on first boot) | One-time code from the kernel operator's /jin approval card. Needed only on the very first boot (no keystore yet) or a lost-keystore rebind; delete it after the first successful boot. With neither a keystore nor a claim code, check-env only warns; claim at /learn/claim after boot. |
+With no keystore, `check-env` only warns and the app boots unclaimed. Approve provisioning on `/jin`,
+then paste the one-time code at `/learn/claim`. This browser page is the only claim path; the app goes live
+without an env edit or restart. Existing keystores continue to authenticate on every later boot.
 
 ## Optional
 
@@ -147,10 +145,10 @@ IMAJIN_ENV=dev
 
 DATABASE_URL=postgres://learn:CHANGE_ME@localhost:5432/imajin_dev
 APP_DB_SCHEMA=learn
-# 32+ random chars, separate per environment: openssl rand -hex 32
+# 32+ random chars, separate per environment: provision through the approved secret-management tool
 SESSION_SECRET=REPLACE_ME
 # Bearer secret the kernel presents to POST /api/webhook for a paid course checkout; must equal the
-# kernel's LEARN_WEBHOOK_SECRET. 32+ random chars, separate per environment: openssl rand -hex 32
+# kernel's LEARN_WEBHOOK_SECRET. 32+ random chars, separate per environment: provision through the approved secret-management tool
 WEBHOOK_SECRET=REPLACE_ME
 
 IMAJIN_AUTH_URL=https://dev-jin.imajin.ai
@@ -162,9 +160,8 @@ PAY_SERVICE_URL=https://dev-jin.imajin.ai/pay
 
 # --- Identity (operator step: docs/REGISTRATION.md) ---
 IMAJIN_APP_DID=did:imajin:REPLACE_ME
-# First boot only (no keystore yet) — paste the one-time code from the /jin
-# approval card, then delete this line after the app has booted once.
-# IMAJIN_APP_CLAIM_CODE=
+# No keystore yet? Boot unclaimed, approve provisioning on /jin, then
+# paste the one-time code at /learn/claim in the browser.
 # Persistent, per-environment keystore (must survive deploys):
 IMAJIN_APP_KEYSTORE=/home/jin/.imajin/learn.dev.keystore.json
 
@@ -197,10 +194,10 @@ NEXT_PUBLIC_DOMAIN=imajin.ai
 
 DATABASE_URL=postgres://learn:CHANGE_ME@localhost:5432/imajin_prod
 APP_DB_SCHEMA=learn
-# 32+ random chars, separate per environment: openssl rand -hex 32
+# 32+ random chars, separate per environment: provision through the approved secret-management tool
 SESSION_SECRET=REPLACE_ME
 # Bearer secret the kernel presents to POST /api/webhook for a paid course checkout; must equal the
-# kernel's LEARN_WEBHOOK_SECRET. 32+ random chars, separate per environment: openssl rand -hex 32
+# kernel's LEARN_WEBHOOK_SECRET. 32+ random chars, separate per environment: provision through the approved secret-management tool
 WEBHOOK_SECRET=REPLACE_ME
 
 IMAJIN_AUTH_URL=https://jin.imajin.ai
@@ -212,9 +209,8 @@ PAY_SERVICE_URL=https://jin.imajin.ai/pay
 
 # --- Identity (operator step: docs/REGISTRATION.md) ---
 IMAJIN_APP_DID=did:imajin:REPLACE_ME
-# First boot only (no keystore yet) — paste the one-time code from the /jin
-# approval card, then delete this line after the app has booted once.
-# IMAJIN_APP_CLAIM_CODE=
+# No keystore yet? Boot unclaimed, approve provisioning on /jin, then
+# paste the one-time code at /learn/claim in the browser.
 # Persistent, per-environment keystore (must survive deploys):
 IMAJIN_APP_KEYSTORE=/home/jin/.imajin/learn.prod.keystore.json
 
@@ -223,8 +219,8 @@ LOG_LEVEL=info
 
 ## Secrets handling
 
-- `DATABASE_URL` (carries the DB password), `SESSION_SECRET` and `IMAJIN_APP_CLAIM_CODE` are the only secret-bearing
-  variables a correct deployment sets. Keep `.env.local` mode `0600`, owned by the deploy user, never in git.
+- `DATABASE_URL` (carries the DB password), `SESSION_SECRET` and `WEBHOOK_SECRET` are secret-bearing
+  variables. Claim codes are submitted only in the browser, never through env. Keep `.env.local` mode `0600`, owned by the deploy user, never in git.
 - This app's signing key is **never** in an env file — `IMAJIN_APP_PRIVATE_KEY` makes the app refuse to boot. The key
   is fetched at boot by `loadAppSigningKey()`; only the 0600 bootstrap keystore (`IMAJIN_APP_KEYSTORE`) is
   persisted. Treat that file like the claim code: never commit, copy, or sync it (`.imajin/` is git-ignored).

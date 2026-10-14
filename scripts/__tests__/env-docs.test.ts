@@ -37,6 +37,17 @@ function envNamesIn(source: string): string[] {
 
 describe('env contract coverage', () => {
   const manifest = new Set(ENV_VAR_NAMES);
+  it('keeps IMAJIN_APP_CLAIM_CODE absent outside tests asserting its removal or ignored behavior', () => {
+    const files = spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim().split('\n');
+    const assertionFiles = new Set([
+      'scripts/__tests__/env-docs.test.ts',
+      'src/lib/__tests__/signing-identity.test.ts',
+    ]);
+    for (const file of files) {
+      if (assertionFiles.has(file)) continue;
+      expect(read(file), file).not.toContain('IMAJIN_APP_CLAIM_CODE');
+    }
+  });
 
   it('has no duplicate manifest entries and every entry is complete', () => {
     expect(new Set(ENV_VAR_NAMES).size).toBe(ENV_VAR_NAMES.length);
@@ -72,6 +83,8 @@ describe('env contract coverage', () => {
       const dist = join(base, pkg, 'dist');
       for (const file of walk(dist)) {
         for (const name of envNamesIn(readFileSync(file, 'utf8'))) {
+          // The SDK's legacy env claim default is disabled by our explicit options.
+          if (name === 'IMAJIN_APP_CLAIM_CODE') continue;
           if (!manifest.has(name)) undocumented.push(`${name} (@ima-jin/${pkg})`);
         }
       }
@@ -112,7 +125,7 @@ describe('env contract coverage', () => {
   });
 });
 
-const SECRET = 'a'.repeat(64);
+const SECRET = 'OBVIOUSLY_FAKE_TEST_SECRET_NOT_FOR_USE'.repeat(2);
 
 /** A shipped example with every placeholder filled in the way an operator would. */
 function filled(file: string) {
@@ -122,7 +135,7 @@ function filled(file: string) {
     NEXT_PUBLIC_IMAJIN_APP_ID: 'app_abc123',
     SESSION_SECRET: SECRET,
     WEBHOOK_SECRET: SECRET,
-    DATABASE_URL: 'postgres://learn:s3cret@localhost:5432/imajin',
+    DATABASE_URL: 'postgres://learn:FAKE_TEST_PASSWORD@localhost:5432/imajin',
   };
 }
 
@@ -206,13 +219,12 @@ describe('validateEnv', () => {
     expect(errorsOf({ ...validProd(), WEBHOOK_SECRET: 'REPLACE_ME' }, 'prod')).toMatch(/WEBHOOK_SECRET must be a real secret/);
   });
 
-  it('warns (without failing) about first-boot, port and logging leftovers', () => {
+  it('warns (without failing) about port and logging leftovers', () => {
     const { errors, warnings } = validateEnv(
-      { ...validProd(), IMAJIN_APP_CLAIM_CODE: 'once', PORT: '9999', LOG_DB_TRANSPORT: 'true' },
+      { ...validProd(), PORT: '9999', LOG_DB_TRANSPORT: 'true' },
       'prod',
     );
     expect(errors).toEqual([]);
-    expect(warnings.join('\n')).toMatch(/IMAJIN_APP_CLAIM_CODE is set/);
     expect(warnings.join('\n')).toMatch(/PORT is set/);
     expect(warnings.join('\n')).toMatch(/LOG_DB_TRANSPORT=true/);
   });
@@ -220,12 +232,12 @@ describe('validateEnv', () => {
   it('only warns on a first boot (no keystore, no claim code) — claim at /learn/claim after boot', () => {
     const firstBoot = validateEnv(validProd(), 'prod', { keystoreExists: false });
     expect(firstBoot.errors).toEqual([]);
-    expect(firstBoot.warnings.join('\n')).toMatch(/No keystore found and IMAJIN_APP_CLAIM_CODE is not set/);
+    expect(firstBoot.warnings.join('\n')).toMatch(/No keystore found/);
     expect(firstBoot.warnings.join('\n')).toMatch(/claim at \/learn\/claim after boot/);
 
-    const withCode = validateEnv({ ...validProd(), IMAJIN_APP_CLAIM_CODE: 'once' }, 'prod', { keystoreExists: false });
-    expect(withCode.errors).toEqual([]);
-    expect(withCode.warnings.join('\n')).not.toMatch(/\/learn\/claim/);
+    const withIgnoredCode = validateEnv({ ...validProd(), IMAJIN_APP_CLAIM_CODE: 'FAKE_ENV_CLAIM_CODE_IGNORED' }, 'prod', { keystoreExists: false });
+    expect(withIgnoredCode).toEqual(firstBoot);
+    expect(ENV_VAR_NAMES).not.toContain('IMAJIN_APP_CLAIM_CODE');
     expect(validateEnv(validProd(), 'prod', { keystoreExists: true })).toEqual({ errors: [], warnings: [] });
   });
 
@@ -260,19 +272,20 @@ describe('check-env CLI', () => {
     writeFileSync(file, filledText('.env.dev.example', join(dir, 'does-not-exist.json')));
     const result = cli(['dev', '--file', file]);
     expect(result.status).toBe(0);
-    expect(result.stderr).toMatch(/No keystore found and IMAJIN_APP_CLAIM_CODE is not set/);
+    expect(result.stderr).toMatch(/No keystore found/);
     expect(result.stderr).toMatch(/claim at \/learn\/claim after boot/);
     expect(result.stderr).not.toMatch(/^error:/m);
     expect(result.stdout + result.stderr).not.toContain(SECRET);
   });
 
-  it('exits 0 on a first boot once the claim code is present, warning to remove it afterwards', () => {
+  it('ignores the legacy env claim code and still directs first boot to the browser', () => {
     const file = join(dir, 'claim.env');
-    writeFileSync(file, `${filledText('.env.dev.example', join(dir, 'does-not-exist.json'))}IMAJIN_APP_CLAIM_CODE=one-time-code\n`);
+    writeFileSync(file, `${filledText('.env.dev.example', join(dir, 'does-not-exist.json'))}IMAJIN_APP_CLAIM_CODE=FAKE_ENV_CLAIM_CODE_IGNORED\n`);
     const result = cli(['dev', '--file', file]);
     expect(result.status).toBe(0);
-    expect(result.stderr).toMatch(/IMAJIN_APP_CLAIM_CODE is set/);
-    expect(result.stdout + result.stderr).not.toContain('one-time-code');
+    expect(result.stderr).toMatch(/claim at \/learn\/claim after boot/);
+    expect(result.stdout + result.stderr).not.toContain('IMAJIN_APP_CLAIM_CODE');
+    expect(result.stdout + result.stderr).not.toContain('FAKE_ENV_CLAIM_CODE_IGNORED');
   });
 
   it('exits 1 for an invalid file without echoing any value', () => {

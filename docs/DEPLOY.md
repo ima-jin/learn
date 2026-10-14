@@ -38,7 +38,7 @@ win. Step 2 swaps in the new ref's `deploy.sh`, so a change to the script itself
 2. **checkout** — `git fetch --tags --prune`, then `git checkout --detach` the ref (default `origin/main`). Never
    `git pull`.
 3. **env check** — `scripts/check-env.mjs <target>` validates `.env.local` for the target (names only, never
-   values), including "a first boot has a claim code". See [ENVIRONMENTS.md](./ENVIRONMENTS.md).
+   values). A missing keystore only warns; claim at `/learn/claim` after boot. See [ENVIRONMENTS.md](./ENVIRONMENTS.md).
 4. **install** — `pnpm install --frozen-lockfile`.
 5. **build** — `next build` with `.env.local` loaded, so `NEXT_PUBLIC_*` values are baked in.
 6. **baseline + migrate** — `scripts/migrate-baseline.mjs` (idempotent; refuses on mismatch), then
@@ -63,17 +63,15 @@ Use `~/dev/learn` and `.env.dev.example` / `scripts/deploy.sh dev` for dev. Depl
 
 ### Operator steps this repo cannot do
 
-- **Mint the app identity** — separately for dev and prod ([REGISTRATION.md](./REGISTRATION.md#minting-the-app-identity-operator-runbook)):
-  register the app, approve it on the kernel's `/jin` operator card to mint a one-time **claim code**, put it in
-  `.env.local` as `IMAJIN_APP_CLAIM_CODE` together with the registry's `IMAJIN_APP_DID` and
-  `NEXT_PUBLIC_IMAJIN_APP_ID`, and deploy. The first boot spends the code and writes the 0600 keystore
-  (`IMAJIN_APP_KEYSTORE`); **delete `IMAJIN_APP_CLAIM_CODE` afterwards**. `check-env.mjs` fails while an identity
-  value is still a placeholder. With neither a keystore nor a claim code it only warns — deploy anyway and claim
-  at `/learn/claim` after boot instead (REGISTRATION.md §4). No key is ever made by hand
-  and none ever appears in `.env.local` or a log.
+- **Claim the app identity** — separately for dev and prod ([REGISTRATION.md](./REGISTRATION.md#minting-the-app-identity-operator-runbook)):
+  register the app and configure its public `IMAJIN_APP_DID`, `NEXT_PUBLIC_IMAJIN_APP_ID` and persistent
+  `IMAJIN_APP_KEYSTORE` path. Deploy through the deployment tool; without a keystore the app boots unclaimed
+  and `check-env` only warns. Approve provisioning on `/jin`, then open `/learn/claim` and paste the one-time
+  code in the browser. The app goes live immediately and writes the `0600` keystore — no env edit or restart.
+  Already-claimed apps keep using their existing keystore. No key is ever made by hand or appears in a log.
 - **Create the databases/roles** and put the connection strings in each `.env.local`. Prod/dev already contain the
   `learn` schema and data; the baseline adopts it in place.
-- **`SESSION_SECRET`** — `openssl rand -hex 32`, one per environment.
+- **`SESSION_SECRET`** — provision through the approved secret-management tool, separately per environment (not changed by this claim-path upgrade).
 - **Caddy** — the route already exists; verify it against the [snippet below](#caddy).
 
 ### One-time cutover checklist
@@ -167,8 +165,9 @@ rollback is only safe while migrations stay additive.
 - **`baseline` exits 1** — the message lists exactly what differs. Do not edit the script to force it; fix the schema
   (or tell the app owner the schema drifted), then re-run.
 - **`env check` fails** — each line names a variable; see [ENVIRONMENTS.md](./ENVIRONMENTS.md).
-- **Health never goes green on a first boot** — `pm2 logs <name>`: a used/rejected `IMAJIN_APP_CLAIM_CODE` or a wrong
-  `IMAJIN_APP_DID` fails at `instrumentation.ts`. Dev and prod each need their own DID, claim code and keystore. A
-  spent or lost claim needs the operator to re-approve with `reissueClaim: true`.
+- **Unclaimed after boot** — open `/learn/claim` and redeem the code from `/jin`. Health reports
+  `claimed: false` until the claim succeeds; it still reports `status: ok`. A lost keystore needs operator
+  re-approval with `reissueClaim: true`, followed by the same browser claim. Existing-keystore authentication
+  failures still stop boot; check the registered DID and kernel availability.
 - **Login loops on dev only** — `IMAJIN_ENV=dev` is missing (wrong session cookie name).
 - **401s from scoped tokens** — `NEXT_PUBLIC_APP_URL`'s host is not in the app's registered `tokenAudiences`.
