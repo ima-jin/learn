@@ -17,6 +17,21 @@ nothing here imports kernel internals: learn talks to the kernel only through sc
 The ports, the pm2 names and the Caddy route are the ones the monorepo's `apps/learn` already used, so cutover
 needs no proxy change.
 
+## Kernel-signed callback rollout order
+
+**Deploy a kernel that signs callbacks (ima-jin/imajin-ai#2800) before upgrading this receiver**, separately for
+each environment. Dev Learn is already live, but the dev kernel is still on pre-#2800 code at this rollout:
+upgrade and verify the dev kernel first, then deploy this Learn version. Repeat kernel-first for prod.
+Unsigned legacy callbacks are rejected with 401 and cannot create paid enrollments; do not deploy this receiver
+against a kernel that still sends them, and do not restore a shared callback credential as a workaround.
+
+The kernel signs; Learn verifies with the published SDK using `IMAJIN_APP_DID` and `AUTH_SERVICE_URL`.
+Preserve the writable public-key pins in `.imajin/kernel-webhook-pins/` across deploys/rollbacks.
+Discovery, trust and storage failures return 503 without business processing so the kernel can retry;
+signature, audience, freshness and replay failures remain 401. See
+[Kernel webhook verification](./ARCHITECTURE.md#kernel-webhook-verification-ima-jinlearn15) for the single-process
+nonce-store constraints.
+
 ## The one command
 
 From the target's checkout on the server:

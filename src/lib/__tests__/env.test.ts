@@ -4,7 +4,6 @@ import {
   appBaseUrl,
   authServiceUrl,
   payServiceUrl,
-  webhookSecret,
 } from '../env';
 
 afterEach(() => {
@@ -36,15 +35,6 @@ describe('payServiceUrl', () => {
     expect(payServiceUrl()).toBe('https://k.test/pay');
     vi.stubEnv('IMAJIN_KERNEL_URL', '');
     expect(payServiceUrl()).toBeNull();
-  });
-});
-
-describe('webhookSecret', () => {
-  it('reads WEBHOOK_SECRET, null when unset or empty', () => {
-    vi.stubEnv('WEBHOOK_SECRET', 'shh');
-    expect(webhookSecret()).toBe('shh');
-    vi.stubEnv('WEBHOOK_SECRET', '');
-    expect(webhookSecret()).toBeNull();
   });
 });
 

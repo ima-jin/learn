@@ -4,8 +4,8 @@
  * Called by the kernel's pay service when a learn course-enrollment checkout is paid
  * (ima-jin/learn#13, the kernel's `notifyLearnService`). Creates the student's enrollment.
  *
- * Authentication is `Authorization: Bearer <WEBHOOK_SECRET>`, compared in constant time, and fails
- * closed: with no secret configured nothing is authorized.
+ * Authentication verifies the kernel's signature over the raw request, including this app's DID,
+ * timestamp and nonce, before reading payment fields or touching the database.
  *
  * Only a payment the kernel settled on the course creator's OWN Stripe account (`rail: "stripe-byo"`)
  * enrolls. The notification's `metadata` is whatever the checkout caller supplied, so before enrolling:
@@ -13,9 +13,8 @@
  *     the course's creator — otherwise a payment to anyone else's account could buy this course;
  *   - the amount collected must cover the course price, in the course's currency.
  *
- * Idempotent: the kernel may redeliver, and a replay returns the existing enrollment.
+ * Idempotent: a freshly signed redelivery returns the existing enrollment; nonce replays are rejected.
  */
-import { createHash, timingSafeEqual } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { createLogger } from '@ima-jin/logger';
@@ -23,33 +22,10 @@ import { db } from '@/db';
 import { courses, type Course } from '@/db/schema';
 import { STRIPE_BYO_RAIL } from '@/lib/card-rail';
 import { enrollStudent } from '@/lib/enrollment';
-import { webhookSecret } from '@/lib/env';
-import { errorResponse, jsonResponse, readJson, type JsonBody } from '@/lib/utils';
+import { authenticateKernelWebhook } from '@/lib/auth/kernel-webhook';
+import { errorResponse, jsonResponse, type JsonBody } from '@/lib/utils';
 
 const log = createLogger('learn');
-
-const BEARER_PREFIX = 'Bearer ';
-
-function sha256(value: string): Buffer {
-  return createHash('sha256').update(value).digest();
-}
-
-/** Constant-time: both sides are hashed first, so neither content nor length of the secret leaks. */
-function secretsMatch(provided: string, expected: string): boolean {
-  return timingSafeEqual(sha256(provided), sha256(expected));
-}
-
-/** Bearer secret only — and fail closed: with no secret configured, nothing is authorized. */
-function isWebhookAuthorized(request: NextRequest): boolean {
-  const expected = webhookSecret();
-  if (!expected) {
-    log.error({}, 'WEBHOOK_SECRET is not set — rejecting every webhook; paid enrollments will not be created');
-    return false;
-  }
-  const authorization = request.headers.get('authorization') ?? '';
-  if (!authorization.startsWith(BEARER_PREFIX)) return false;
-  return secretsMatch(authorization.slice(BEARER_PREFIX.length), expected);
-}
 
 function stringField(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
@@ -121,9 +97,7 @@ async function enrollPaidStudent(body: JsonBody): Promise<Response> {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isWebhookAuthorized(request)) return errorResponse('Unauthorized', 401);
-
-  const parsed = await readJson(request);
+  const parsed = await authenticateKernelWebhook(request);
   if ('response' in parsed) return parsed.response;
   const { body } = parsed;
 

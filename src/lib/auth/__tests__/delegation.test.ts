@@ -1,6 +1,5 @@
-import { DELEGATION_ROUTES } from '@ima-jin/auth/delegation-policy';
 import { describe, expect, it } from 'vitest';
-import { type LearnDeleteRouteKey, enforceOwnerMutationPolicy } from '../delegation';
+import { LEARN_DELEGATION_ROUTES, type LearnDeleteRouteKey, enforceOwnerMutationPolicy } from '../delegation';
 
 const OWNER = 'did:imajin:owner';
 const AGENT = 'did:imajin:agent';
@@ -8,7 +7,7 @@ const KEYS: LearnDeleteRouteKey[] = ['learn.course.delete', 'learn.module.delete
 
 describe('learn delegation-policy registry', () => {
   it.each(KEYS)('%s is an irreversible learn mutation', (key) => {
-    expect(DELEGATION_ROUTES[key]).toMatchObject({ app: 'learn', class: 'irreversible', action: 'delete' });
+    expect(LEARN_DELEGATION_ROUTES[key]).toMatchObject({ app: 'learn', class: 'irreversible', action: 'delete' });
   });
 });
 
