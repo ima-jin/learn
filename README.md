@@ -49,7 +49,7 @@ pnpm lint && pnpm typecheck && pnpm build
 2. **Register this app with the kernel** — see [`docs/REGISTRATION.md`](./docs/REGISTRATION.md).
    You'll get back this app's `appDid` and registry `id`.
 3. **Set env**: `cp .env.example .env.local`, then fill in `IMAJIN_APP_DID`,
-   `NEXT_PUBLIC_IMAJIN_APP_ID`, `SESSION_SECRET`, `APP_DB_SCHEMA`, `DATABASE_URL`, and
+   `NEXT_PUBLIC_IMAJIN_APP_ID`, `APP_DB_SCHEMA`, `DATABASE_URL`, and
    `IMAJIN_KERNEL_URL`. This app refuses to start without `IMAJIN_APP_DID` set, or if a raw
    `IMAJIN_APP_PRIVATE_KEY` is present (see `instrumentation.ts`) — it fetches its own signing key
    at boot via `@ima-jin/auth-client`'s `loadAppSigningKey()` instead. The only claim path is *approve on `/jin` → open `<this app>/claim` → paste the code →
@@ -185,6 +185,13 @@ middleware.ts      ← gates every route on claim state — unclaimed page, /cla
 route (#2427) — see "This app's own signing key" below.
 
 ## This app's own signing key
+
+Declared self-secrets live in the vault, not env. `imajin.app.json` contains only their
+names/recipes; the kernel issues and seals them through `/jin` provision/claim.
+After signing identity bootstrap, `loadFromVault()` authenticates with the same app
+keystore and loads required credentials into memory before serving signed-in sessions.
+Use `/jin` rotate/re-sync and restart to pick up rotated values with no file edit.
+An unavailable required credential stops boot with its name and the recovery step, never its value.
 
 This app never reads a raw private key from env. `instrumentation.ts` fails loud at boot if
 `IMAJIN_APP_PRIVATE_KEY` is set, and instead calls `@ima-jin/auth-client`'s `loadAppSigningKey()`.

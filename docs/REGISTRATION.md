@@ -61,12 +61,15 @@ it's what the "Sign in with Imajin" redirect uses client-side.
 
 ## 3. Wire up this app
 
+Provision through the kernel's `/jin` tool with this repo's `imajin.app.json`.
+Its `secrets` declarations are names and issuance recipes, never values. The kernel
+issues and seals those self-secrets on provision/claim; nobody makes or copies a key.
+
 ```bash
 cp .env.example .env.local
 # fill in:
 #   IMAJIN_APP_DID=<appDid from the response above>
 #   NEXT_PUBLIC_IMAJIN_APP_ID=<id from the response above>
-#   SESSION_SECRET=<provision through the approved secret-management tool>
 #   APP_DB_SCHEMA=<a name for this app's own Postgres schema — see docs/MIGRATIONS.md>
 #   DATABASE_URL=<this app's own Postgres connection string>
 #   IMAJIN_KERNEL_URL=<same host as IMAJIN_AUTH_URL above>
@@ -122,6 +125,17 @@ Without a usable `X-Forwarded-For`, all callers share one coarse fallback bucket
 Once a keystore exists (from the claim page), every later boot signs a fresh challenge with the
 persisted bootstrap key and fetches the signing key again — no claim code needed, no operator
 action required for an ordinary restart.
+
+Next, `loadFromVault()` uses that same app keystore identity to fetch the manifest-declared
+self-secrets. Boot and browser claim do not finish until all required credentials are loaded.
+They stay in process memory only, shared across server bundles, never env or disk.
+
+To rotate, use the app's `/jin` rotate tool, re-sync its manifest declarations on `/jin`, then
+restart the app through the process tool. Restart fetches the current vault value without a file edit;
+previously signed local sessions no longer verify. No env fallback exists.
+If the vault is unreachable or a required credential is missing, startup fails closed with one
+value-free error naming the credential and the `/jin` re-sync/restart step. A failed browser claim
+keeps its issued keystore, returns 503, and needs the same re-sync/restart recovery; do not redeem another code.
 
 If the local keystore is ever lost (disk wipe, redeploy to a fresh host), ask the kernel operator
 to re-approve `apps.provision` with `reissueClaim: true` for a fresh claim code — redeeming it also

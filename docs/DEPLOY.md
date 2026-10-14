@@ -78,6 +78,11 @@ Use `~/dev/learn` and `.env.dev.example` / `scripts/deploy.sh dev` for dev. Depl
 
 ### Operator steps this repo cannot do
 
+- **Self-secrets** — approve the names/recipes from `imajin.app.json` on `/jin`.
+  The kernel issues and seals them on provision/claim. Boot awaits `loadFromVault()` with
+  the app keystore identity; no session signing key belongs in env. For rotation or recovery,
+  use `/jin` rotate/re-sync and restart through the process tool, with no file edit.
+
 - **Claim the app identity** — separately for dev and prod ([REGISTRATION.md](./REGISTRATION.md#minting-the-app-identity-operator-runbook)):
   register the app and configure its public `IMAJIN_APP_DID`, `NEXT_PUBLIC_IMAJIN_APP_ID` and persistent
   `IMAJIN_APP_KEYSTORE` path. Deploy through the deployment tool; without a keystore the app boots unclaimed
@@ -86,7 +91,6 @@ Use `~/dev/learn` and `.env.dev.example` / `scripts/deploy.sh dev` for dev. Depl
   Already-claimed apps keep using their existing keystore. No key is ever made by hand or appears in a log.
 - **Create the databases/roles** and put the connection strings in each `.env.local`. Prod/dev already contain the
   `learn` schema and data; the baseline adopts it in place.
-- **`SESSION_SECRET`** — provision through the approved secret-management tool, separately per environment (not changed by this claim-path upgrade).
 - **Caddy** — the route already exists; verify it against the [snippet below](#caddy).
 
 ### One-time cutover checklist

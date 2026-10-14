@@ -51,8 +51,6 @@ export const ENV_VARS = [
     'postgres://<role>:<password>@localhost:5432/<dev_db>', 'postgres://<role>:<password>@localhost:5432/<prod_db>', { secret: true }),
   same('APP_DB_SCHEMA', 'required', 'runtime',
     'The one Postgres schema this app owns. Fixed to `learn` — the existing prod/dev schema; never change it.', 'learn'),
-  same('SESSION_SECRET', 'required', 'runtime',
-    'HS256 key for the session cookie (@ima-jin/auth-client). 32+ random characters, e.g. `provision through the approved secret-management tool`; separate per environment.', '(32+ random chars)', { secret: true }),
   entry('IMAJIN_AUTH_URL', 'required', 'runtime',
     'Kernel base URL (no path) the session helpers use for sign-in/session validation.',
     'https://dev-jin.imajin.ai', 'https://jin.imajin.ai'),
@@ -147,7 +145,6 @@ export const ENV_VARS = [
 export const ENV_VAR_NAMES = ENV_VARS.map((v) => v.name);
 
 const PLACEHOLDER = /REPLACE_ME|CHANGE_ME/;
-const MIN_SESSION_SECRET_LENGTH = 32;
 
 function parseUrl(value) {
   try {
@@ -212,12 +209,6 @@ function checkIdentity(get, errors) {
   }
   if (PLACEHOLDER.test(appId)) {
     errors.push('NEXT_PUBLIC_IMAJIN_APP_ID is still a placeholder — use the registry id from registration (docs/REGISTRATION.md).');
-  }
-  for (const name of ['SESSION_SECRET']) {
-    const secret = get(name);
-    if (secret !== '' && (PLACEHOLDER.test(secret) || secret.length < MIN_SESSION_SECRET_LENGTH)) {
-      errors.push(`${name} must be a real secret of at least ${MIN_SESSION_SECRET_LENGTH} characters (provision through the approved secret-management tool), not a placeholder.`);
-    }
   }
 }
 

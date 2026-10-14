@@ -37,6 +37,22 @@ function envNamesIn(source: string): string[] {
 
 describe('env contract coverage', () => {
   const manifest = new Set(ENV_VAR_NAMES);
+  it('declares only the session self-secret recipe and removes it from env contracts and docs', () => {
+    expect(JSON.parse(read('imajin.app.json')).secrets).toEqual([
+      { name: 'SESSION_SECRET', kind: 'random-32B' },
+    ]);
+    expect(ENV_VAR_NAMES).not.toContain('SESSION_SECRET');
+    for (const file of [
+      '.env.example', '.env.dev.example', '.env.prod.example',
+      'scripts/lib/env-manifest.mjs', 'scripts/check-env.mjs',
+      'README.md', 'docs/REGISTRATION.md', 'docs/DEPLOY.md', 'docs/ENVIRONMENTS.md',
+    ]) {
+      expect(read(file), file).not.toContain('SESSION_SECRET');
+    }
+    const dependencies = JSON.parse(read('package.json')).dependencies;
+    expect(dependencies['@ima-jin/auth']).toBe('0.8.18');
+    expect(dependencies['@ima-jin/auth-client']).toBe('0.8.18');
+  });
   it('keeps IMAJIN_APP_CLAIM_CODE absent outside tests asserting its removal or ignored behavior', () => {
     const files = spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim().split('\n');
     const assertionFiles = new Set([
@@ -84,7 +100,7 @@ describe('env contract coverage', () => {
       for (const file of walk(dist)) {
         for (const name of envNamesIn(readFileSync(file, 'utf8'))) {
           // The SDK's legacy env claim default is disabled by our explicit options.
-          if (name === 'IMAJIN_APP_CLAIM_CODE') continue;
+          if (name === 'IMAJIN_APP_CLAIM_CODE' || name === 'SESSION_SECRET') continue;
           if (!manifest.has(name)) undocumented.push(`${name} (@ima-jin/${pkg})`);
         }
       }
@@ -115,8 +131,6 @@ describe('env contract coverage', () => {
       for (const variable of ENV_VARS.filter((v) => v.secret)) {
         if (variable.name === 'DATABASE_URL') {
           expect(parsed.DATABASE_URL, file).toContain(':CHANGE_ME@');
-        } else if (variable.name === 'SESSION_SECRET') {
-          expect(parsed[variable.name], file).toBe('REPLACE_ME');
         } else {
           expect(parsed[variable.name] ?? '', `${file} ${variable.name}`).toBe('');
         }
@@ -125,7 +139,6 @@ describe('env contract coverage', () => {
   });
 });
 
-const SECRET = 'OBVIOUSLY_FAKE_TEST_SECRET_NOT_FOR_USE'.repeat(2);
 
 /** A shipped example with every placeholder filled in the way an operator would. */
 function filled(file: string) {
@@ -133,7 +146,6 @@ function filled(file: string) {
     ...parseEnv(read(file)),
     IMAJIN_APP_DID: 'did:imajin:abc123',
     NEXT_PUBLIC_IMAJIN_APP_ID: 'app_abc123',
-    SESSION_SECRET: SECRET,
     DATABASE_URL: 'postgres://learn:FAKE_TEST_PASSWORD@localhost:5432/imajin',
   };
 }
@@ -144,10 +156,9 @@ describe('validateEnv', () => {
     ['prod', '.env.prod.example'],
   ] as const)('accepts the shipped %s example apart from the placeholders', (target, file) => {
     const { errors } = validateEnv(parseEnv(read(file)), target);
-    expect(errors).toHaveLength(4);
+    expect(errors).toHaveLength(3);
     expect(errors.join('\n')).toMatch(/IMAJIN_APP_DID is still a placeholder/);
     expect(errors.join('\n')).toMatch(/NEXT_PUBLIC_IMAJIN_APP_ID is still a placeholder/);
-    expect(errors.join('\n')).toMatch(/SESSION_SECRET must be a real secret/);
     expect(errors.join('\n')).toMatch(/DATABASE_URL still contains a placeholder/);
   });
 
@@ -190,7 +201,7 @@ describe('validateEnv', () => {
     expect(errorsOf({ ...validProd(), AUTH_SERVICE_URL: 'not a url' }, 'prod')).toMatch(/not a valid http/);
   });
 
-  it('rejects a wrong schema, base path, database URL, DID, app id and a weak session secret', () => {
+  it('rejects a wrong schema, base path, database URL, DID and app id', () => {
     const errors = errorsOf(
       {
         ...validProd(),
@@ -199,7 +210,6 @@ describe('validateEnv', () => {
         DATABASE_URL: 'mysql://h/db',
         IMAJIN_APP_DID: 'abc',
         NEXT_PUBLIC_IMAJIN_APP_ID: 'xyz',
-        SESSION_SECRET: 'short',
       },
       'prod',
     );
@@ -208,7 +218,6 @@ describe('validateEnv', () => {
     expect(errors).toMatch(/DATABASE_URL must be a postgres/);
     expect(errors).toMatch(/must start with did:imajin:/);
     expect(errors).toMatch(/must be the registry id/);
-    expect(errors).toMatch(/SESSION_SECRET must be a real secret/);
   });
 
   it('warns (without failing) about port and logging leftovers', () => {
@@ -256,7 +265,7 @@ describe('check-env CLI', () => {
     const result = cli(['prod', '--file', file]);
     expect(result.status).toBe(0);
     expect(result.stdout).toMatch(/is valid for prod/);
-    expect(result.stdout + result.stderr).not.toContain(SECRET);
+    expect(result.stdout + result.stderr).not.toContain('FAKE_TEST_PASSWORD');
   });
 
   it('exits 0 on a first boot (no keystore, no claim code), warning to claim at /learn/claim, without echoing any value', () => {
@@ -267,7 +276,7 @@ describe('check-env CLI', () => {
     expect(result.stderr).toMatch(/No keystore found/);
     expect(result.stderr).toMatch(/claim at \/learn\/claim after boot/);
     expect(result.stderr).not.toMatch(/^error:/m);
-    expect(result.stdout + result.stderr).not.toContain(SECRET);
+    expect(result.stdout + result.stderr).not.toContain('FAKE_TEST_PASSWORD');
   });
 
   it('ignores the legacy env claim code and still directs first boot to the browser', () => {

@@ -6,7 +6,8 @@ scripts — with what it does, when it is read, and its dev and prod values. Thi
 starts reading a variable that is not documented here.
 
 No secret values live in this repo. Examples are shape-only placeholders (`REPLACE_ME`, `CHANGE_ME`); real values
-live in the untracked `.env.local` on each host. `check-env` rejects a file that still contains a placeholder.
+for declared self-secrets live only in the vault and process memory. Env holds the keystore path,
+`DATABASE_URL`, kernel URLs and non-secret configuration. `check-env` rejects a file that still contains a placeholder.
 
 ## The env files
 
@@ -34,7 +35,7 @@ enough.
 - **`IMAJIN_ENV`.** `dev` on dev (selects the `imajin_session_dev` cookie), **unset** on prod. A production build is
   `NODE_ENV=production` on both, so this is the only thing that tells dev from prod.
 - **Database.** Separate Postgres database per environment; the schema name is `learn` in both.
-- **Identity.** Each environment has its own app DID, registry id, claim code, keystore and `SESSION_SECRET`.
+- **Identity.** Each environment has its own app DID, registry id, claim code, keystore and vault-sealed self-secrets.
 - **Port.** dev 3103, prod 7103 (from `ecosystem.config.cjs`, not the env file).
 
 ## Required on every deployed instance
@@ -45,7 +46,6 @@ Missing any of these and `scripts/check-env.mjs` fails the deploy before anythin
 |---|---|---|---|---|
 | `DATABASE_URL` **(secret)** | runtime | `postgres://<role>:<password>@localhost:5432/<dev_db>` | `postgres://<role>:<password>@localhost:5432/<prod_db>` | Postgres connection string for this app's own database (also read by drizzle-kit and scripts/migrate-baseline.mjs). |
 | `APP_DB_SCHEMA` | runtime | `learn` | `learn` | The one Postgres schema this app owns. Fixed to `learn` — the existing prod/dev schema; never change it. |
-| `SESSION_SECRET` **(secret)** | runtime | (32+ random chars) | (32+ random chars) | HS256 key for the session cookie (@ima-jin/auth-client). 32+ random characters, e.g. `provision through the approved secret-management tool`; separate per environment. |
 | `IMAJIN_AUTH_URL` | runtime | `https://dev-jin.imajin.ai` | `https://jin.imajin.ai` | Kernel base URL (no path) the session helpers use for sign-in/session validation. |
 | `AUTH_SERVICE_URL` | runtime | `https://dev-jin.imajin.ai/auth` | `https://jin.imajin.ai/auth` | Kernel auth service base URL, including the /auth prefix. Verifies scoped app tokens and receives learn.* attestations. |
 | `IMAJIN_KERNEL_URL` | runtime | `https://dev-jin.imajin.ai` | `https://jin.imajin.ai` | Kernel base URL (no path). Used to fetch this app's signing key at boot (claim / keystore) and as the PAY_SERVICE_URL fallback. |
@@ -148,8 +148,6 @@ IMAJIN_ENV=dev
 
 DATABASE_URL=postgres://learn:CHANGE_ME@localhost:5432/imajin_dev
 APP_DB_SCHEMA=learn
-# 32+ random chars, separate per environment: provision through the approved secret-management tool
-SESSION_SECRET=REPLACE_ME
 
 IMAJIN_AUTH_URL=https://dev-jin.imajin.ai
 AUTH_SERVICE_URL=https://dev-jin.imajin.ai/auth
@@ -194,8 +192,6 @@ NEXT_PUBLIC_DOMAIN=imajin.ai
 
 DATABASE_URL=postgres://learn:CHANGE_ME@localhost:5432/imajin_prod
 APP_DB_SCHEMA=learn
-# 32+ random chars, separate per environment: provision through the approved secret-management tool
-SESSION_SECRET=REPLACE_ME
 
 IMAJIN_AUTH_URL=https://jin.imajin.ai
 AUTH_SERVICE_URL=https://jin.imajin.ai/auth
@@ -216,8 +212,14 @@ LOG_LEVEL=info
 
 ## Secrets handling
 
-- `DATABASE_URL` (carries the DB password) and `SESSION_SECRET` are secret-bearing
-  variables. Claim codes are submitted only in the browser, never through env. Keep `.env.local` mode `0600`, owned by the deploy user, never in git.
+- Self-secrets are declared in `imajin.app.json`, issued and sealed by the kernel on
+  provision/claim, then fetched by `loadFromVault()` with the app keystore identity.
+  Boot awaits them before sessions can be signed; they remain in memory only. Use
+  `/jin` rotate/re-sync, then restart through the process tool to pick up the current
+  value without an env edit. Missing credentials or an unreachable vault stop boot;
+  the error names the credential and `/jin` re-sync/restart, never a value. No env fallback.
+
+- `DATABASE_URL` is the only permitted secret-bearing env variable. Claim codes are submitted only in the browser, never through env. Keep `.env.local` mode `0600`, owned by the deploy user, never in git.
 - This app's signing key is **never** in an env file — `IMAJIN_APP_PRIVATE_KEY` makes the app refuse to boot. The key
   is fetched at boot by `loadAppSigningKey()`; only the 0600 bootstrap keystore (`IMAJIN_APP_KEYSTORE`) is
   persisted. Treat that file like the claim code: never commit, copy, or sync it (`.imajin/` is git-ignored).

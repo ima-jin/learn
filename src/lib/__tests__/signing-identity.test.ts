@@ -4,6 +4,11 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateBootstrapKeypair, writeKeystore } from '@ima-jin/auth-client';
 import * as authClient from '@ima-jin/auth-client';
+const { vaultMock } = vi.hoisted(() => ({ vaultMock: vi.fn() }));
+vi.mock('@ima-jin/auth-client', async (original) => ({
+  ...await original<typeof import('@ima-jin/auth-client')>(),
+  loadFromVault: vaultMock,
+}));
 import {
   AppDidMismatchError,
   bootstrapSigningIdentity,
@@ -50,6 +55,10 @@ function useTempKeystoreDir(tmpPrefix: string): { dir: () => string } {
 
   beforeEach(async () => {
     workDir = await mkdtemp(join(tmpdir(), tmpPrefix));
+    vaultMock.mockResolvedValue({
+      values: { SESSION_SECRET: 'OBVIOUSLY_FAKE_TEST_SESSION_PLACEHOLDER' },
+      degraded: [],
+    });
   });
 
   afterEach(async () => {
