@@ -17,6 +17,19 @@ nothing here imports kernel internals: learn talks to the kernel only through sc
 The ports, the pm2 names and the Caddy route are the ones the monorepo's `apps/learn` already used, so cutover
 needs no proxy change.
 
+## Vault self-secret rollout order
+
+Apply this order separately on **each environment** (dev, then prod):
+
+1. First deploy a kernel that includes **ima-jin/imajin-ai#2801** (kernel-issued, sealed app self-secrets).
+2. **Sync the manifest secrets on `/jin`** for this app from `imajin.app.json`.
+3. **Only then upgrade this app.**
+
+Otherwise a claimed app fails closed at boot: required vault credentials are unavailable, so startup exits
+with status 1 rather than serving with an env fallback. An unclaimed boot still skips the vault and exposes
+the browser claim path. Legacy env entries for vault-issued credentials are ignored; the warning names
+each entry and asks you to delete it, never printing its value.
+
 ## Kernel-signed callback rollout order
 
 **Deploy a kernel that signs callbacks (ima-jin/imajin-ai#2800) before upgrading this receiver**, separately for

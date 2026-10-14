@@ -5,7 +5,7 @@ import {
   resolveKeystorePath,
   type AppSigningKey,
 } from '@ima-jin/auth-client';
-import { bootstrapSelfSecrets, clearSelfSecrets, SelfSecretsUnavailableError } from '@/lib/self-secrets';
+import { bootstrapSelfSecrets, clearSelfSecrets, SelfSecretsUnavailableError, warnIgnoredSelfSecretEnv } from '@/lib/self-secrets';
 
 /**
  * This app's own vault signing key (#7, #2427, mirrors `ima-jin/imajin-ai`'s
@@ -81,6 +81,7 @@ function hasKeystore(): boolean {
 export async function bootstrapSigningIdentity(): Promise<void> {
   writeSigningIdentity(null);
   clearSelfSecrets();
+  warnIgnoredSelfSecretEnv();
   if (!hasKeystore()) {
     return;
   }

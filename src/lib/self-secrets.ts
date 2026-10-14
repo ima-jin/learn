@@ -18,6 +18,15 @@ export function clearSelfSecrets(): void {
   delete (globalThis as SelfSecretsStore)[SELF_SECRETS_KEY];
 }
 
+/** Check presence only: never read, copy or log a legacy env credential value. */
+export function warnIgnoredSelfSecretEnv(): void {
+  for (const { name } of manifest.secrets) {
+    if (Object.hasOwn(process.env, name)) {
+      console.warn(`${name} is ignored; it is issued by the kernel vault. Delete it from the env file.`);
+    }
+  }
+}
+
 /** Called only after the SDK has authenticated/established this app's keystore. */
 export async function bootstrapSelfSecrets(): Promise<void> {
   clearSelfSecrets();

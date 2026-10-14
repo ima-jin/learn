@@ -53,6 +53,17 @@ describe('env contract coverage', () => {
     expect(dependencies['@ima-jin/auth']).toBe('0.8.18');
     expect(dependencies['@ima-jin/auth-client']).toBe('0.8.18');
   });
+
+  it('documents kernel-first deployment and manifest Sync separately for each environment', () => {
+    const docs = read('docs/DEPLOY.md');
+    const section = docs.split('## Vault self-secret rollout order')[1].split('## Kernel-signed callback rollout order')[0];
+    expect(section).toContain('separately on **each environment**');
+    expect(section).toContain('ima-jin/imajin-ai#2801');
+    expect(section).toContain('Sync the manifest secrets on `/jin`');
+    expect(section.indexOf('#2801')).toBeLessThan(section.indexOf('Sync the manifest secrets'));
+    expect(section.indexOf('Sync the manifest secrets')).toBeLessThan(section.indexOf('Only then upgrade this app'));
+    expect(section).toContain('a claimed app fails closed at boot');
+  });
   it('keeps IMAJIN_APP_CLAIM_CODE absent outside tests asserting its removal or ignored behavior', () => {
     const files = spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim().split('\n');
     const assertionFiles = new Set([

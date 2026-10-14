@@ -38,7 +38,8 @@ beforeEach(() => {
   vi.stubEnv('IMAJIN_KERNEL_URL', 'https://kernel.test');
   vi.stubEnv('IMAJIN_AUTH_URL', 'https://kernel.test');
   vi.stubEnv('IMAJIN_APP_KEYSTORE', '/test-only/learn.keystore.json');
-  vi.stubEnv('SESSION_SECRET', '');
+  vi.stubEnv('SESSION_SECRET', undefined);
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
   mocks.readKeystore.mockReturnValue({ publicKey: 'FAKE_BOOTSTRAP_PUBLIC', privateKey: 'FAKE_BOOTSTRAP_PRIVATE' });
   mocks.loadAppSigningKey.mockResolvedValue({
     appDid: 'did:imajin:learn-test', privateKey: 'FAKE_SIGNING_PRIVATE', publicKey: 'FAKE_SIGNING_PUBLIC',
@@ -66,7 +67,7 @@ describe('vault-only startup', () => {
     });
     const token = await createSessionToken(user, authConfig);
     expect(await verifySessionToken(token, authConfig)).toEqual(user);
-    expect(process.env.SESSION_SECRET).toBe('');
+    expect(process.env.SESSION_SECRET).toBeUndefined();
   });
 
   it('never uses an env fallback, including before or during boot', async () => {
@@ -75,6 +76,39 @@ describe('vault-only startup', () => {
     await register();
     expect(authConfig.secret).toBe(FAKE_FIRST);
     expect(process.env.SESSION_SECRET).toBe(FAKE_ENV);
+  });
+
+  it('warns about a leftover vault-issued env entry without ever logging its value', async () => {
+    vi.stubEnv('SESSION_SECRET', FAKE_ENV);
+    const logs = [
+      vi.mocked(console.warn),
+      vi.spyOn(console, 'error').mockImplementation(() => {}),
+      vi.spyOn(console, 'log').mockImplementation(() => {}),
+      vi.spyOn(console, 'info').mockImplementation(() => {}),
+      vi.spyOn(console, 'debug').mockImplementation(() => {}),
+    ];
+    await register();
+    expect(console.warn).toHaveBeenCalledOnce();
+    expect(console.warn).toHaveBeenCalledWith('SESSION_SECRET is ignored; it is issued by the kernel vault. Delete it from the env file.');
+    expect(JSON.stringify(logs.flatMap((log) => log.mock.calls))).not.toContain(FAKE_ENV);
+    expect(authConfig.secret).toBe(FAKE_FIRST);
+    expect(process.env.SESSION_SECRET).toBe(FAKE_ENV);
+  });
+
+  it('does not warn when declared credentials are absent from env', async () => {
+    await register();
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('warns on unclaimed boot while still skipping the vault', async () => {
+    vi.stubEnv('SESSION_SECRET', FAKE_ENV);
+    mocks.readKeystore.mockReturnValue(null);
+    await register();
+    expect(console.warn).toHaveBeenCalledOnce();
+    expect(console.warn).toHaveBeenCalledWith('SESSION_SECRET is ignored; it is issued by the kernel vault. Delete it from the env file.');
+    expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain(FAKE_ENV);
+    expect(mocks.loadFromVault).not.toHaveBeenCalled();
+    expect(isAppClaimed()).toBe(false);
   });
 
   it('serves the real callback and session handlers using the boot-loaded credential', async () => {
@@ -93,7 +127,7 @@ describe('vault-only startup', () => {
     const session = await import('../../../app/api/auth/session/route');
     expect(await (await session.GET()).json()).toEqual(user);
     expect(log).not.toHaveBeenCalled();
-    expect(process.env.SESSION_SECRET).toBe('');
+    expect(process.env.SESSION_SECRET).toBeUndefined();
   });
 
   it('sanitizes an unreachable kernel even when signing-key loading fails first', async () => {
@@ -139,6 +173,8 @@ describe('vault-only startup', () => {
     expect(log).not.toHaveBeenCalled();
     expect(isAppClaimed()).toBe(false);
     expect(() => getSessionSecret()).toThrow(SelfSecretsUnavailableError);
+    expect(console.warn).toHaveBeenCalledOnce();
+    expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain(FAKE_ENV);
   });
 
   it('picks up a rotated vault value on restart with no file or env change', async () => {
@@ -152,7 +188,7 @@ describe('vault-only startup', () => {
     const newToken = await createSessionToken(user, authConfig);
     expect(await verifySessionToken(newToken, authConfig)).toEqual(user);
     expect(mocks.loadFromVault).toHaveBeenCalledTimes(2);
-    expect(process.env.SESSION_SECRET).toBe('');
+    expect(process.env.SESSION_SECRET).toBeUndefined();
   });
 
   it('drops previously loaded credentials when a subsequent boot fails', async () => {
