@@ -34,12 +34,14 @@ components:
         Migration fallback: the kernel's shared session cookie, validated
         against the kernel. Carries no scopes.
     webhookAuth:
-      type: http
-      scheme: bearer
+      type: apiKey
+      in: header
+      name: x-kernel-signature
       description: >
-        Server-to-server only: the kernel presents `Authorization: Bearer <secret>` where the secret is
-        this app's `WEBHOOK_SECRET` (the kernel's `LEARN_WEBHOOK_SECRET`). Compared in constant time;
-        with no secret configured every call is rejected.
+        Server-to-server only: Ed25519 kernel signature verified by verifyKernelWebhook over the exact
+        raw body, method, path/query, recipient DID, timestamp and nonce. Requires x-kernel-audience,
+        x-kernel-timestamp, x-kernel-nonce and x-kernel-kid as well. Public keys are discovered from
+        AUTH_SERVICE_URL and durably pinned. No shared credential.
     bearerAuth:
       type: http
       scheme: bearer
@@ -146,12 +148,13 @@ paths:
       summary: Paid checkout notification from the kernel (creates the enrollment)
       description: >
         Called by the kernel's pay service when a course-enrollment checkout is paid. Authenticated with
-        a Bearer secret (not a user session). Only a payment the kernel settled on the course creator's
+        a kernel signature (not a user session). Only a payment the kernel settled on the course creator's
         own Stripe account (`rail: stripe-byo`) enrolls: the kernel-attested top-level `sellerDid` must
         be the course's creator and the amount collected must cover the course price in the course's
-        currency. Idempotent — a redelivery returns the existing enrollment (200) instead of creating
+        currency. Idempotent — a freshly signed redelivery returns the existing enrollment (200) instead of creating
         a second one (201). Any other event, or a payment on another rail, is acknowledged (200,
-        `enrolled: false`) without enrolling anyone.
+        `enrolled: false`) without enrolling anyone. Missing/invalid signatures, wrong recipients,
+        timestamps outside ±300 seconds and consumed nonces are rejected (401) before business effects.
       tags: [learn]
       security:
         - webhookAuth: []
@@ -180,7 +183,7 @@ paths:
                     currency: { type: string, example: CAD }
       responses:
         "200":
-          description: Acknowledged — already enrolled (replay), or nothing to enroll
+          description: Acknowledged — already enrolled (freshly signed redelivery), or nothing to enroll
           content:
             application/json:
               schema:
@@ -207,7 +210,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
-          description: Missing or wrong Bearer secret, or no secret configured
+          description: Missing/invalid kernel signature, recipient mismatch, stale/future timestamp, replay or verification unavailable
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

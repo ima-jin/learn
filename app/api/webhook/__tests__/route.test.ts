@@ -1,3 +1,6 @@
+import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
+import { computeKeyKid } from '@ima-jin/auth/key-rotation';
+import { canonicalKernelWebhookPayload } from '@ima-jin/auth/kernel-webhook';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { courses, db, enrollments, lessonProgress } from '@/db';
@@ -5,9 +8,21 @@ import { CREATOR, OTHER, STUDENT, makeRequest, seedCourse, seedLesson, seedModul
 import { installFakeKernel } from '@test/kernel';
 import { POST } from '../route';
 
-installFakeKernel();
+// Only isolate durable public pins; the actual published verifier and replay store run in every test.
+vi.mock('@ima-jin/auth/kernel-webhook', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@ima-jin/auth/kernel-webhook')>();
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const directory = await mkdtemp(join(tmpdir(), 'learn-webhook-pins-'));
+  return { ...actual, createFileKernelWebhookPinStore: () => actual.createFileKernelWebhookPinStore(directory) };
+});
 
-const SECRET = 'webhook-secret-0123456789abcdef0123456789abcdef';
+const kernel = installFakeKernel();
+const APP_DID = 'did:imajin:learn-test';
+const keypair = generateKeyPairSync('ed25519');
+const publicKey = keypair.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('hex');
+const kid = computeKeyKid(publicKey);
 
 type Body = Record<string, unknown>;
 
@@ -31,9 +46,28 @@ function paidBody(overrides: Body = {}, metadata: Body = {}): Body {
   };
 }
 
-const bearer = (secret: string = SECRET) => ({ authorization: `Bearer ${secret}` });
-const call = (body: unknown, headers: Record<string, string> = bearer()) =>
-  POST(makeRequest('POST', '/api/webhook', { headers, body }));
+function signedRequest(rawBody: string, options: {
+  timestamp?: number;
+  audience?: string;
+  path?: string;
+  privateKey?: typeof keypair.privateKey;
+} = {}) {
+  const audience = options.audience ?? APP_DID;
+  const timestamp = String(options.timestamp ?? Math.floor(Date.now() / 1000));
+  const nonce = randomUUID();
+  const path = options.path ?? '/api/webhook';
+  const payload = canonicalKernelWebhookPayload({
+    audience, timestamp, nonce, method: 'POST', url: `https://learn.test${path}`, rawBody,
+  });
+  return makeRequest('POST', path, { rawBody, headers: {
+    'x-kernel-audience': audience,
+    'x-kernel-timestamp': timestamp,
+    'x-kernel-nonce': nonce,
+    'x-kernel-kid': kid,
+    'x-kernel-signature': sign(null, Buffer.from(payload), options.privateKey ?? keypair.privateKey).toString('hex'),
+  } });
+}
+const call = (body: unknown) => POST(signedRequest(JSON.stringify(body)));
 
 const allEnrollments = () => db.select().from(enrollments);
 
@@ -46,7 +80,11 @@ async function seedPaidCourse() {
 }
 
 beforeEach(() => {
-  vi.stubEnv('WEBHOOK_SECRET', SECRET);
+  vi.stubEnv('IMAJIN_APP_DID', APP_DID);
+  kernel.respond.set('/.well-known/kernel-signing-key', () => Response.json({
+    current: kid,
+    keys: [{ kid, publicKey, algorithm: 'Ed25519', validFrom: '2020-01-01T00:00:00.000Z' }],
+  }));
 });
 
 afterEach(() => {
@@ -59,47 +97,101 @@ describe('POST /api/webhook — authentication', () => {
     await seedPaidCourse();
   });
 
-  it('rejects a wrong secret with 401 and enrolls nobody', async () => {
-    const res = await call(paidBody(), bearer('not-the-secret'));
+  async function expectRejected(request: ReturnType<typeof makeRequest>) {
+    const select = vi.spyOn(db, 'select');
+    const transaction = vi.spyOn(db, 'transaction');
+    const res = await POST(request);
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: 'Unauthorized' });
+    expect(select).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+    expect(kernel.calls.filter((c) => c.method !== 'GET')).toEqual([]);
     expect(await allEnrollments()).toHaveLength(0);
+    expect(await db.select().from(lessonProgress)).toHaveLength(0);
+  }
+
+  it.each(['x-kernel-audience', 'x-kernel-timestamp', 'x-kernel-nonce', 'x-kernel-kid', 'x-kernel-signature'])(
+    'rejects a missing %s header before any business effects', async (header) => {
+      const request = signedRequest(JSON.stringify(paidBody()));
+      request.headers.delete(header);
+      await expectRejected(request);
+    },
+  );
+
+  it('rejects unsigned requests including a legacy bearer', async () => {
+    await expectRejected(makeRequest('POST', '/api/webhook', {
+      body: paidBody(), headers: { authorization: 'Bearer OBVIOUSLY_FAKE_RETIRED_CREDENTIAL' },
+    }));
   });
 
-  it('rejects a secret that differs only in length (prefix of the real one)', async () => {
-    const res = await call(paidBody(), bearer(SECRET.slice(0, -1)));
-    expect(res.status).toBe(401);
-    expect(await allEnrollments()).toHaveLength(0);
+  it('authenticates before parsing malformed JSON', async () => {
+    await expectRejected(makeRequest('POST', '/api/webhook', { rawBody: '{not json' }));
   });
 
-  it.each([
-    ['no Authorization header', {}],
-    ['a non-Bearer scheme', { authorization: `Basic ${SECRET}` }],
-    ['an empty Bearer token', { authorization: 'Bearer ' }],
-    ['the legacy x-webhook-secret header', { 'x-webhook-secret': SECRET }],
-  ])('rejects %s', async (_label, headers) => {
-    const res = await call(paidBody(), headers);
-    expect(res.status).toBe(401);
-    expect(await allEnrollments()).toHaveLength(0);
+  it('rejects tampered raw bytes (even equivalent JSON)', async () => {
+    const raw = JSON.stringify(paidBody());
+    const request = signedRequest(raw);
+    await expectRejected(makeRequest('POST', '/api/webhook', {
+      headers: Object.fromEntries(request.headers), rawBody: `${raw}\n`,
+    }));
   });
 
-  it('rejects a secret supplied in the body', async () => {
-    const res = await call(paidBody({ secret: SECRET }), {});
-    expect(res.status).toBe(401);
+  it('rejects a well-formed but corrupted signature', async () => {
+    const request = signedRequest(JSON.stringify(paidBody()));
+    request.headers.set('x-kernel-signature', '00'.repeat(64));
+    await expectRejected(request);
   });
 
-  it('authenticates before it reads the body: a bad secret with malformed JSON is 401, not 400', async () => {
-    const res = await POST(makeRequest('POST', '/api/webhook', { headers: bearer('nope'), rawBody: '{not json' }));
-    expect(res.status).toBe(401);
+  it('rejects a signature made by another key', async () => {
+    await expectRejected(signedRequest(JSON.stringify(paidBody()), {
+      privateKey: generateKeyPairSync('ed25519').privateKey,
+    }));
   });
 
-  it.each([['unset', undefined], ['empty', '']])('fails closed when WEBHOOK_SECRET is %s', async (_label, value) => {
-    vi.stubEnv('WEBHOOK_SECRET', value);
-    // Neither the empty-looking Bearer nor an arbitrary one may be accepted.
-    for (const headers of [bearer(''), bearer('anything'), {}]) {
-      expect((await call(paidBody(), headers)).status).toBe(401);
-    }
-    expect(await allEnrollments()).toHaveLength(0);
+  it('rejects an unpublished key id', async () => {
+    const request = signedRequest(JSON.stringify(paidBody()));
+    request.headers.set('x-kernel-kid', 'auth-0000000000000000');
+    await expectRejected(request);
+  });
+
+  it('rejects a valid signature intended for another app', async () => {
+    await expectRejected(signedRequest(JSON.stringify(paidBody()), { audience: 'did:imajin:another-app' }));
+  });
+
+  it('rejects a signature forwarded to a different path or query', async () => {
+    const request = signedRequest(JSON.stringify(paidBody()), { path: '/other?target=learn' });
+    await expectRejected(makeRequest('POST', '/api/webhook', {
+      headers: Object.fromEntries(request.headers), body: paidBody(),
+    }));
+  });
+
+  it.each([-301, 301])('rejects a timestamp %s seconds from now', async (offset) => {
+    await expectRejected(signedRequest(JSON.stringify(paidBody()), {
+      timestamp: Math.floor(Date.now() / 1000) + offset,
+    }));
+  });
+
+  it.each(['IMAJIN_APP_DID', 'AUTH_SERVICE_URL'])('fails closed without %s', async (name) => {
+    vi.stubEnv(name, '');
+    await expectRejected(signedRequest(JSON.stringify(paidBody())));
+  });
+
+  it('rejects a consumed nonce with no database access or progress reset', async () => {
+    const request = signedRequest(JSON.stringify(paidBody()));
+    const replay = request.clone();
+    expect((await POST(request)).status).toBe(201);
+    await db.update(lessonProgress).set({ status: 'completed' });
+    const select = vi.spyOn(db, 'select');
+    const transaction = vi.spyOn(db, 'transaction');
+    expect((await POST(replay as typeof request)).status).toBe(401);
+    expect(select).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+    expect(await allEnrollments()).toHaveLength(1);
+    expect((await db.select().from(lessonProgress)).map((p) => p.status)).toEqual(['completed', 'completed']);
+  });
+
+  it('accepts a signature over the deployed mount path', async () => {
+    expect((await POST(signedRequest(JSON.stringify(paidBody()), { path: '/learn/api/webhook' }))).status).toBe(201);
   });
 });
 
@@ -161,7 +253,7 @@ describe('POST /api/webhook — paid checkout enrolls', () => {
   });
 });
 
-describe('POST /api/webhook — replay is idempotent', () => {
+describe('POST /api/webhook — freshly signed redelivery is idempotent', () => {
   beforeEach(async () => {
     await seedPaidCourse();
   });
@@ -284,9 +376,11 @@ describe('POST /api/webhook — what must not enroll', () => {
   });
 
   it('400s malformed JSON and a non-object body', async () => {
-    const malformed = await POST(makeRequest('POST', '/api/webhook', { headers: bearer(), rawBody: '{not json' }));
+    const malformed = await POST(signedRequest('{not json'));
     expect(malformed.status).toBe(400);
     expect((await call([1, 2, 3])).status).toBe(400);
+    expect((await call(null)).status).toBe(400);
+    expect((await call('not an object')).status).toBe(400);
   });
 
   it('answers 500 when enrolling fails, leaving nothing half-written', async () => {

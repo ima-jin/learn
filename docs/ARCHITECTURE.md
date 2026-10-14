@@ -57,7 +57,8 @@ contract or fixes to defects in the original:
   `learn.lesson.delete`) runs the published `@ima-jin/auth/delegation-policy` helper (`src/lib/auth/delegation.ts`,
   imajin-ai#2360): an agent acting under `X-Acting-For` gets 403 `AGENT_APPROVAL_REQUIRED` — it may propose, the
   owner countersigns. The app-token result does not surface `actingFor` yet (SDK gap), so the hook is wired but only
-  fires once `authenticate()` populates `AuthenticatedCaller.actingFor`.
+  fires once `authenticate()` populates `AuthenticatedCaller.actingFor`. SDK 0.8.18 no longer inventories Learn's
+  standalone routes, so their irreversible classification lives locally and calls its public `enforceDelegationPolicy`.
 - **Token audience is the slug.** Scoped app tokens are minted and verified with `aud = 'learn'` (imajin-ai#2706),
   required by `@ima-jin/auth` >= 0.8.15.
 - **Student emails are not released.** The roster resolves handle/display name through the kernel profile service
@@ -77,11 +78,31 @@ contract or fixes to defects in the original:
   advertised in the spec.
 - **Paid enrollment (ima-jin/learn#13).** The paid checkout's `successUrl` used to default to
   `/api/courses/{slug}/enroll/callback`, which never existed in either codebase, and nothing created the enrollment
-  after payment. Now the kernel notifies `POST /api/webhook` (Bearer `WEBHOOK_SECRET`, constant-time, fail-closed) when
+  after payment. Now the kernel notifies `POST /api/webhook` (kernel-signed, SDK-verified, fail-closed) when
   a checkout is paid on the course creator's own Stripe account, and that creates the enrollment idempotently
   (`src/lib/enrollment.ts`). The success URL lands on the course page (`?paid=1`), which waits briefly for the
   notification instead of showing an Enroll button again. The webhook trusts the kernel-attested `sellerDid`, not
   caller-supplied checkout metadata, and checks the amount against the course price.
+
+## Kernel webhook verification (ima-jin/learn#15)
+
+`src/lib/auth/kernel-webhook.ts` calls the published `@ima-jin/auth/kernel-webhook` helper
+`verifyKernelWebhook` before any business logic. It consumes the exact raw body once and verifies Ed25519
+headers binding this app's configured `IMAJIN_APP_DID`, timestamp, nonce, method and path/query (including `/learn`
+on deployed requests). It discovers active public keys through `AUTH_SERVICE_URL` and persists trust pins in
+`.imajin/kernel-webhook-pins/`. No shared webhook credential is provisioned or copied.
+
+Missing, tampered, wrong-key, wrong-recipient, expired/future and consumed-nonce requests return 401 without
+reading or writing app records. Authenticated malformed JSON/non-object bodies return 400. The SDK permits
+timestamps within ±300 seconds and rejects duplicate nonces; a kernel retry must carry a fresh signature/nonce,
+and enrollment remains idempotent on (course, student).
+
+Keep `.imajin/kernel-webhook-pins/` writable, separate per environment, and persistent across deploys; key
+discovery requires HTTPS (loopback HTTP is allowed by the SDK for local development) and Linux util-linux
+`flock`. The SDK's default nonce store is process-local, matching the single-process pm2 fork deployment.
+It does not preserve nonce evidence across restarts or share it across replicas. Enrollment idempotency still
+prevents duplicate paid enrollment, but a replicated deployment or restart-persistent replay requirement needs
+an atomic shared `KernelWebhookNonceStore` before scaling.
 
 ## Open decisions
 
