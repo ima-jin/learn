@@ -19,3 +19,4 @@ coverage/
 
 # Local bootstrap keystore (0600) — never commit key material
 .imajin/
+
