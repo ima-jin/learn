@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { readKeystore, resolveKeystorePath } from '@ima-jin/auth-client';
+import { forwardAuthCallback } from '@ima-jin/auth-client/middleware';
 import { withBasePath } from '@/lib/base-path';
 
 /**
@@ -57,6 +58,11 @@ function htmlResponse(status: number, title: string, message: string): NextRespo
 }
 
 export function middleware(request: NextRequest): NextResponse {
+  const callback = forwardAuthCallback(request, {
+    publicUrl: process.env.NEXT_PUBLIC_APP_URL,
+    basePath: process.env.NEXT_PUBLIC_BASE_PATH || undefined,
+  });
+  if (callback) return callback;
   const { pathname } = request.nextUrl;
   const claimed = hasKeystore();
 
