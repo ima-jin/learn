@@ -4,7 +4,7 @@ import { getNodeSelf } from '@ima-jin/config';
 import { buildFairManifest } from '@ima-jin/fair';
 import { db } from '@/db';
 import { courses, lessons, modules } from '@/db/schema';
-import { authenticate } from '@/lib/auth/authenticate';
+import { authenticationErrorResponse, authenticate } from '@/lib/auth/authenticate';
 import { errorResponse, generateId, intParam, jsonResponse, readJson, slugify } from '@/lib/utils';
 
 /**
@@ -13,7 +13,7 @@ import { errorResponse, generateId, intParam, jsonResponse, readJson, slugify } 
 export async function POST(request: NextRequest) {
   const authResult = await authenticate(request);
   if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
+    return authenticationErrorResponse(authResult);
   }
 
   const { did } = authResult.auth;

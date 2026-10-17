@@ -3,7 +3,7 @@ import { and, asc, count, eq } from 'drizzle-orm';
 import { resolveIdentitiesForDids } from '@ima-jin/auth';
 import { db } from '@/db';
 import { enrollments, lessonProgress, lessons, modules } from '@/db/schema';
-import { authenticate } from '@/lib/auth/authenticate';
+import { authenticationErrorResponse, authenticate } from '@/lib/auth/authenticate';
 import { getCourseBySlug } from '@/lib/course-access';
 import { errorResponse, jsonResponse } from '@/lib/utils';
 
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   const authResult = await authenticate(request);
   if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
+    return authenticationErrorResponse(authResult);
   }
 
   const course = await getCourseBySlug(slug);

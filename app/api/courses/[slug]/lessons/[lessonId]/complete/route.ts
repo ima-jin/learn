@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { enrollments, lessonProgress, lessons, modules } from '@/db/schema';
-import { authenticate } from '@/lib/auth/authenticate';
+import { authenticationErrorResponse, authenticate } from '@/lib/auth/authenticate';
 import { getCourseBySlug } from '@/lib/course-access';
 import { emitLearnEvent } from '@/lib/events';
 import { errorResponse, jsonResponse } from '@/lib/utils';
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const { slug, lessonId } = await params;
 
   const authResult = await authenticate(request);
-  if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
+  if ('error' in authResult) return authenticationErrorResponse(authResult);
 
   const { auth } = authResult;
   const did = auth.did;

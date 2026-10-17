@@ -53,12 +53,27 @@ contract or fixes to defects in the original:
 - **No act-as / tier.** The app-token contract carries only a DID, so `X-Acting-As` group identity (and the .fair
   scope-fee lookup that depended on it) and the soft-vs-hard-DID gate on writes are gone — callers always act as
   themselves. Tracked kernel-side: ima-jin/imajin-ai#2639 (act-as), #2640 (tier).
-- **Delegation policy.** `DELETE` on a course, module and lesson (`learn.course.delete`, `learn.module.delete`,
-  `learn.lesson.delete`) runs the published `@ima-jin/auth/delegation-policy` helper (`src/lib/auth/delegation.ts`,
-  imajin-ai#2360): an agent acting under `X-Acting-For` gets 403 `AGENT_APPROVAL_REQUIRED` — it may propose, the
-  owner countersigns. The app-token result does not surface `actingFor` yet (SDK gap), so the hook is wired but only
-  fires once `authenticate()` populates `AuthenticatedCaller.actingFor`. SDK 0.8.18 no longer inventories Learn's
-  standalone routes, so their irreversible classification lives locally and calls its public `enforceDelegationPolicy`.
+- **Delegation policy (#26 / imajin-ai#2360).** Every authenticated mutation passes through
+  `enforceOwnerMutationPolicy` in `authenticate()` before any course lookup or effect. Published SDK 0.8.18
+  already verifies `X-Acting-For` on token and cookie paths; Learn preserves only its verified `actingFor`,
+  never the raw header. Value-moving and irreversible mutations return the complete SDK 403
+  `AGENT_APPROVAL_REQUIRED` proposal. The owner countersigns by reissuing from their own session; request
+  body approval flags confer no authority. Unknown delegated mutations fail closed.
+  The registry and three protocol exceptions live in `src/lib/auth/delegation.ts`; AST coverage discovers
+  every POST/PUT/PATCH/DELETE export and proves each classified route reaches this common boundary.
+  Ordinary course details, module metadata/creation and ordering are reversible. Course PATCH escalates
+  price/currency/whole metadata (including .fair removal) to value-moving, and status/visibility to irreversible.
+  Course creation (retained attribution record), deletes, lesson content creation/overwriting, enrollment
+  and completion are irreversible. Enrollment is conservatively gated for its permanent free-enrollment and
+  attestation path even though its paid branch only creates a checkout proposal.
+  Webhook (kernel-signed callback), claim (one-time operator code) and logout (SDK session clearing)
+  retain their own protocols, not delegated resource authority.
+  **DID-resolution audit:** `authenticate()` returns the SDK's original `did` plus `actingFor`, without
+  replacing `did` with the owner's DID. `requireCourseOwner` and the course PATCH/DELETE handlers still
+  compare `creatorDid` to that original DID; enrollment/completion likewise use the caller DID.
+  Thus delegates cannot impersonate an owner's resources here, even for reversible edits. This change
+  intentionally does not broaden that authority. Policy and coverage are in place before any future
+  owner-DID resolution adoption, and tests prove the ordinary ownership 403 remains.
 - **Token audience is the slug.** Scoped app tokens are minted and verified with `aud = 'learn'` (imajin-ai#2706),
   required by `@ima-jin/auth` >= 0.8.15.
 - **Student emails are not released.** The roster resolves handle/display name through the kernel profile service

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { enrollments, lessonProgress, lessons, modules } from '@/db/schema';
-import { authenticate } from '@/lib/auth/authenticate';
+import { authenticationErrorResponse, authenticate } from '@/lib/auth/authenticate';
 import { getCourseBySlug } from '@/lib/course-access';
 import { errorResponse, jsonResponse } from '@/lib/utils';
 
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const { slug } = await params;
 
   const authResult = await authenticate(request);
-  if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
+  if ('error' in authResult) return authenticationErrorResponse(authResult);
 
   const did = authResult.auth.did;
 

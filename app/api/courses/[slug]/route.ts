@@ -2,8 +2,7 @@ import { NextRequest } from 'next/server';
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { courses, enrollments, lessonProgress, lessons, modules } from '@/db/schema';
-import { authenticate, authenticateOptional } from '@/lib/auth/authenticate';
-import { enforceOwnerMutationPolicy } from '@/lib/auth/delegation';
+import { authenticationErrorResponse, authenticate, authenticateOptional } from '@/lib/auth/authenticate';
 import { getCourseBySlug, withoutLessonContent } from '@/lib/course-access';
 import { errorResponse, jsonResponse, readJson } from '@/lib/utils';
 
@@ -105,7 +104,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   const authResult = await authenticate(request);
   if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
+    return authenticationErrorResponse(authResult);
   }
 
   const course = await getCourseBySlug(slug);
@@ -153,11 +152,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
   const authResult = await authenticate(request);
   if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
+    return authenticationErrorResponse(authResult);
   }
-
-  const delegationDenied = enforceOwnerMutationPolicy(authResult.auth, 'learn.course.delete', slug);
-  if (delegationDenied) return delegationDenied;
 
   const course = await getCourseBySlug(slug);
   if (!course) {
