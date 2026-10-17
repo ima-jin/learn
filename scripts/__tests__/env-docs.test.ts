@@ -51,7 +51,7 @@ describe('env contract coverage', () => {
     }
     const dependencies = JSON.parse(read('package.json')).dependencies;
     expect(dependencies['@ima-jin/auth']).toBe('0.8.18');
-    expect(dependencies['@ima-jin/auth-client']).toBe('0.8.18');
+    expect(dependencies['@ima-jin/auth-client']).toBe('0.8.21');
   });
 
   it('documents kernel-first deployment and manifest Sync separately for each environment', () => {
