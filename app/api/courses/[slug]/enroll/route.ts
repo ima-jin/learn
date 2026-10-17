@@ -4,6 +4,7 @@ import { createLogger } from '@ima-jin/logger';
 import { db } from '@/db';
 import { enrollments } from '@/db/schema';
 import { authenticationErrorResponse, authenticate } from '@/lib/auth/authenticate';
+import { getAppServiceToken } from '@/lib/app-service-token';
 import { cardRailFailure, payErrorCode } from '@/lib/card-rail';
 import { getCourseBySlug } from '@/lib/course-access';
 import { enrollStudent } from '@/lib/enrollment';
@@ -75,11 +76,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const coursePageUrl = `${appBaseUrl(origin)}/course/${slug}`;
   const successUrl = body.successUrl || `${coursePageUrl}?paid=1`;
   const cancelUrl = body.cancelUrl || coursePageUrl;
+  let appToken: string;
+  try {
+    appToken = await getAppServiceToken();
+  } catch {
+    log.error({}, 'Checkout app-service token unavailable');
+    return errorResponse('Payment authentication unavailable. Please try again shortly.', 503);
+  }
 
   try {
     const checkoutResponse = await fetch(`${payUrl}/api/checkout`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${appToken}` },
       body: JSON.stringify({
         sellerDid: course.creatorDid,
         items: [{
