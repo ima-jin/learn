@@ -1,60 +1,44 @@
-import { enforceDelegationPolicy, type DelegationMutation, type DelegationRouteEntry } from '@ima-jin/auth/delegation-policy';
+import { enforceDelegationPolicy, type DelegationMutation, type DelegationRouteEntry, type MutationClass } from '@ima-jin/auth/delegation-policy';
 import type { AuthenticatedCaller } from '@/lib/auth/authenticate';
+
+function route(
+  method: DelegationRouteEntry['method'],
+  path: string,
+  action: string,
+  mutationClass: MutationClass,
+  why: string,
+): DelegationRouteEntry {
+  return { app: 'learn', method, path, action, class: mutationClass, why };
+}
 /** App-owned inventory; decisions and proposal bodies come only from the SDK. */
 export const LEARN_DELEGATION_ROUTES = {
-  'learn.course.create': {
-    app: 'learn', class: 'irreversible', action: 'create', method: 'POST',
-    path: '/api/courses', why: 'Creates a retained course and attribution record; archive is not deletion.',
-  },
-  'learn.course.update': {
-    app: 'learn', class: 'reversible', action: 'update', method: 'PATCH',
-    path: '/api/courses/[slug]', why: 'Editable course details; money, attribution and disclosure fields escalate below.',
-  },
-  'learn.course.delete': {
-    app: 'learn', class: 'irreversible', action: 'delete', method: 'DELETE',
-    path: '/api/courses/[slug]', why: 'archives a course',
-  },
-  'learn.module.delete': {
-    app: 'learn', class: 'irreversible', action: 'delete', method: 'DELETE',
-    path: '/api/courses/[slug]/modules/[moduleId]', why: 'deletes a module and its lessons',
-  },
-  'learn.module.create': {
-    app: 'learn', class: 'reversible', action: 'create', method: 'POST',
-    path: '/api/courses/[slug]/modules', why: 'Adds editable module metadata that the owner can remove.',
-  },
-  'learn.module.update': {
-    app: 'learn', class: 'reversible', action: 'update', method: 'PATCH',
-    path: '/api/courses/[slug]/modules/[moduleId]', why: 'Edits module title, description or ordering.',
-  },
-  'learn.module.reorder': {
-    app: 'learn', class: 'reversible', action: 'reorder', method: 'PATCH',
-    path: '/api/courses/[slug]/modules/reorder', why: 'Changes module ordering, which the owner can restore.',
-  },
-  'learn.lesson.create': {
-    app: 'learn', class: 'irreversible', action: 'create', method: 'POST',
-    path: '/api/courses/[slug]/modules/[moduleId]/lessons', why: 'Discloses new lesson content to existing readers; disclosure cannot be undone.',
-  },
-  'learn.lesson.update': {
-    app: 'learn', class: 'irreversible', action: 'update', method: 'PATCH',
-    path: '/api/courses/[slug]/modules/[moduleId]/lessons/[lessonId]', why: 'Overwrites unversioned lesson content and can disclose it to existing readers.',
-  },
-  'learn.lesson.delete': {
-    app: 'learn', class: 'irreversible', action: 'delete', method: 'DELETE',
-    path: '/api/courses/[slug]/modules/[moduleId]/lessons/[lessonId]', why: 'deletes a lesson',
-  },
-  'learn.lesson.reorder': {
-    app: 'learn', class: 'reversible', action: 'reorder', method: 'PATCH',
-    path: '/api/courses/[slug]/modules/[moduleId]/lessons/reorder', why: 'Changes lesson ordering, which the owner can restore.',
-  },
-  'learn.course.enroll': {
-    app: 'learn', class: 'irreversible', action: 'enroll', method: 'POST',
-    path: '/api/courses/[slug]/enroll', why: 'Can create a permanent free enrollment and signed learn.enrolled record; no undo route.',
-  },
-  'learn.lesson.complete': {
-    app: 'learn', class: 'irreversible', action: 'complete', method: 'POST',
-    path: '/api/courses/[slug]/lessons/[lessonId]/complete', why: 'Records completion and can emit a signed learn.completed attestation; no undo route.',
-  },
-} as const satisfies Record<string, DelegationRouteEntry>;
+  'learn.course.create': route('POST', '/api/courses', 'create', 'irreversible',
+    'Creates a retained course and attribution record; archive is not deletion.'),
+  'learn.course.update': route('PATCH', '/api/courses/[slug]', 'update', 'reversible',
+    'Editable course details; money, attribution and disclosure fields escalate below.'),
+  'learn.course.delete': route('DELETE', '/api/courses/[slug]', 'delete', 'irreversible',
+    'Archives a course, removing its availability to learners.'),
+  'learn.module.delete': route('DELETE', '/api/courses/[slug]/modules/[moduleId]', 'delete', 'irreversible',
+    'Deletes a module and its lessons.'),
+  'learn.module.create': route('POST', '/api/courses/[slug]/modules', 'create', 'reversible',
+    'Adds editable module metadata that the owner can remove.'),
+  'learn.module.update': route('PATCH', '/api/courses/[slug]/modules/[moduleId]', 'update', 'reversible',
+    'Edits module title, description or ordering.'),
+  'learn.module.reorder': route('PATCH', '/api/courses/[slug]/modules/reorder', 'reorder', 'reversible',
+    'Changes module ordering, which the owner can restore.'),
+  'learn.lesson.create': route('POST', '/api/courses/[slug]/modules/[moduleId]/lessons', 'create', 'irreversible',
+    'Discloses new lesson content to existing readers; disclosure cannot be undone.'),
+  'learn.lesson.update': route('PATCH', '/api/courses/[slug]/modules/[moduleId]/lessons/[lessonId]', 'update', 'irreversible',
+    'Overwrites unversioned lesson content and can disclose it to existing readers.'),
+  'learn.lesson.delete': route('DELETE', '/api/courses/[slug]/modules/[moduleId]/lessons/[lessonId]', 'delete', 'irreversible',
+    'Deletes a lesson.'),
+  'learn.lesson.reorder': route('PATCH', '/api/courses/[slug]/modules/[moduleId]/lessons/reorder', 'reorder', 'reversible',
+    'Changes lesson ordering, which the owner can restore.'),
+  'learn.course.enroll': route('POST', '/api/courses/[slug]/enroll', 'enroll', 'irreversible',
+    'Can create a permanent free enrollment and signed learn.enrolled record; no undo route.'),
+  'learn.lesson.complete': route('POST', '/api/courses/[slug]/lessons/[lessonId]/complete', 'complete', 'irreversible',
+    'Records completion and can emit a signed learn.completed attestation; no undo route.'),
+};
 
 /** Separate protocols, not delegated owner authority. Never bypass auth using these entries. */
 export const LEARN_DELEGATION_EXCEPTIONS = [
