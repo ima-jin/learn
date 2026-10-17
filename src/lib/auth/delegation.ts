@@ -10,33 +10,40 @@ function route(
 ): DelegationRouteEntry {
   return { app: 'learn', method, path, action, class: mutationClass, why };
 }
+
+const COURSES_PATH = '/api/courses';
+const COURSE_PATH = `${COURSES_PATH}/[slug]`;
+const MODULES_PATH = `${COURSE_PATH}/modules`;
+const MODULE_PATH = `${MODULES_PATH}/[moduleId]`;
+const LESSONS_PATH = `${MODULE_PATH}/lessons`;
+const LESSON_PATH = `${LESSONS_PATH}/[lessonId]`;
 /** App-owned inventory; decisions and proposal bodies come only from the SDK. */
 export const LEARN_DELEGATION_ROUTES = {
-  'learn.course.create': route('POST', '/api/courses', 'create', 'irreversible',
+  'learn.course.create': route('POST', COURSES_PATH, 'create', 'irreversible',
     'Creates a retained course and attribution record; archive is not deletion.'),
-  'learn.course.update': route('PATCH', '/api/courses/[slug]', 'update', 'reversible',
+  'learn.course.update': route('PATCH', COURSE_PATH, 'update', 'reversible',
     'Editable course details; money, attribution and disclosure fields escalate below.'),
-  'learn.course.delete': route('DELETE', '/api/courses/[slug]', 'delete', 'irreversible',
+  'learn.course.delete': route('DELETE', COURSE_PATH, 'delete', 'irreversible',
     'Archives a course, removing its availability to learners.'),
-  'learn.module.delete': route('DELETE', '/api/courses/[slug]/modules/[moduleId]', 'delete', 'irreversible',
+  'learn.module.delete': route('DELETE', MODULE_PATH, 'delete', 'irreversible',
     'Deletes a module and its lessons.'),
-  'learn.module.create': route('POST', '/api/courses/[slug]/modules', 'create', 'reversible',
+  'learn.module.create': route('POST', MODULES_PATH, 'create', 'reversible',
     'Adds editable module metadata that the owner can remove.'),
-  'learn.module.update': route('PATCH', '/api/courses/[slug]/modules/[moduleId]', 'update', 'reversible',
+  'learn.module.update': route('PATCH', MODULE_PATH, 'update', 'reversible',
     'Edits module title, description or ordering.'),
-  'learn.module.reorder': route('PATCH', '/api/courses/[slug]/modules/reorder', 'reorder', 'reversible',
+  'learn.module.reorder': route('PATCH', `${MODULES_PATH}/reorder`, 'reorder', 'reversible',
     'Changes module ordering, which the owner can restore.'),
-  'learn.lesson.create': route('POST', '/api/courses/[slug]/modules/[moduleId]/lessons', 'create', 'irreversible',
+  'learn.lesson.create': route('POST', LESSONS_PATH, 'create', 'irreversible',
     'Discloses new lesson content to existing readers; disclosure cannot be undone.'),
-  'learn.lesson.update': route('PATCH', '/api/courses/[slug]/modules/[moduleId]/lessons/[lessonId]', 'update', 'irreversible',
+  'learn.lesson.update': route('PATCH', LESSON_PATH, 'update', 'irreversible',
     'Overwrites unversioned lesson content and can disclose it to existing readers.'),
-  'learn.lesson.delete': route('DELETE', '/api/courses/[slug]/modules/[moduleId]/lessons/[lessonId]', 'delete', 'irreversible',
+  'learn.lesson.delete': route('DELETE', LESSON_PATH, 'delete', 'irreversible',
     'Deletes a lesson.'),
-  'learn.lesson.reorder': route('PATCH', '/api/courses/[slug]/modules/[moduleId]/lessons/reorder', 'reorder', 'reversible',
+  'learn.lesson.reorder': route('PATCH', `${LESSONS_PATH}/reorder`, 'reorder', 'reversible',
     'Changes lesson ordering, which the owner can restore.'),
-  'learn.course.enroll': route('POST', '/api/courses/[slug]/enroll', 'enroll', 'irreversible',
+  'learn.course.enroll': route('POST', `${COURSE_PATH}/enroll`, 'enroll', 'irreversible',
     'Can create a permanent free enrollment and signed learn.enrolled record; no undo route.'),
-  'learn.lesson.complete': route('POST', '/api/courses/[slug]/lessons/[lessonId]/complete', 'complete', 'irreversible',
+  'learn.lesson.complete': route('POST', `${COURSE_PATH}/lessons/[lessonId]/complete`, 'complete', 'irreversible',
     'Records completion and can emit a signed learn.completed attestation; no undo route.'),
 };
 
