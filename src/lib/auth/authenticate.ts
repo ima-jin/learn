@@ -1,5 +1,7 @@
 import { requireSessionOrAppToken } from '@ima-jin/auth';
 import { APP_SLUG } from '@/lib/env';
+import { enforceOwnerMutationPolicy } from '@/lib/auth/delegation';
+import type { DelegationPolicyBody } from '@ima-jin/auth/delegation-policy';
 
 /**
  * This app's entire inbound-auth surface, deliberately funneled through two
@@ -30,14 +32,25 @@ export interface AuthenticatedCaller {
   appToken: string | null;
   /**
    * Owner DID when the caller is a registered agent acting under `X-Acting-For`
-   * (agent delegation, ima-jin/imajin-ai#2360). Always undefined today: the
-   * published `requireSessionOrAppToken` result does not surface it (see
-   * docs/ARCHITECTURE.md). The delegation policy reads it as soon as it does.
+   * (agent delegation, ima-jin/imajin-ai#2360). Only the published SDK's
+   * verified result is accepted, never the raw header. `did` remains the
+   * authenticated delegate; this app does not impersonate the owner.
    */
   actingFor?: string | null;
 }
 
-export type AuthenticateResult = { auth: AuthenticatedCaller } | { error: string; status: number };
+export interface AuthenticationError {
+  error: string;
+  status: number;
+  proposal?: DelegationPolicyBody;
+}
+
+export type AuthenticateResult = { auth: AuthenticatedCaller } | AuthenticationError;
+
+/** Keep the complete SDK proposal when a route constructs its auth-error response. */
+export function authenticationErrorResponse(result: AuthenticationError): Response {
+  return Response.json(result.proposal ?? { error: result.error }, { status: result.status });
+}
 
 export interface AuthenticateOptions {
   requireScopes?: string[];
@@ -57,8 +70,14 @@ export async function authenticate(request: Request, options?: AuthenticateOptio
   if ('error' in result) {
     return { error: result.error, status: result.status };
   }
-  const { did, scopes, via } = result.auth;
-  return { auth: { did, scopes, via, appToken: via === 'token' ? bearerToken(request) : null } };
+  const { did, scopes, via, actingFor } = result.auth;
+  const auth = { did, scopes, via, appToken: via === 'token' ? bearerToken(request) : null, actingFor };
+  const denied = await enforceOwnerMutationPolicy(auth, request);
+  if (denied) {
+    const proposal: DelegationPolicyBody = await denied.json();
+    return { error: proposal.error, status: denied.status, proposal };
+  }
+  return { auth };
 }
 
 /** Like `authenticate`, but anonymous callers (or invalid credentials) yield `null` instead of an error. */

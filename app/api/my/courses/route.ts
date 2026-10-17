@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { courses, enrollments, lessonProgress } from '@/db/schema';
-import { authenticate } from '@/lib/auth/authenticate';
+import { authenticationErrorResponse, authenticate } from '@/lib/auth/authenticate';
 import { errorResponse, jsonResponse } from '@/lib/utils';
 
 /**
@@ -10,7 +10,7 @@ import { errorResponse, jsonResponse } from '@/lib/utils';
  */
 export async function GET(request: NextRequest) {
   const authResult = await authenticate(request);
-  if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
+  if ('error' in authResult) return authenticationErrorResponse(authResult);
 
   const did = authResult.auth.did;
 

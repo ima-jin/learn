@@ -43,7 +43,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { slug, moduleId } = await params;
 
-  const owner = await requireCourseOwner(request, slug, { key: 'learn.module.delete', resourceId: moduleId });
+  const owner = await requireCourseOwner(request, slug);
   if ('response' in owner) return owner.response;
 
   const mod = await getModuleInCourse(owner.course.id, moduleId);

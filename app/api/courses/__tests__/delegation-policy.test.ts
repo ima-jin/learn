@@ -7,18 +7,17 @@ import { DELETE as deleteModule } from '../[slug]/modules/[moduleId]/route';
 import { DELETE as deleteLesson } from '../[slug]/modules/[moduleId]/lessons/[lessonId]/route';
 
 /**
- * The published `requireSessionOrAppToken` does not yet surface `X-Acting-For`
- * (agent delegation), so these tests inject `actingFor` on top of the REAL
- * authenticate() result to drive the route-level policy.
+ * Inject a trusted SDK delegation result, not a raw request header. The real
+ * app authenticate() boundary and published delegation policy both run.
  */
 const delegation = vi.hoisted(() => ({ actingFor: undefined as string | undefined }));
 
-vi.mock('@/lib/auth/authenticate', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/auth/authenticate')>();
+vi.mock('@ima-jin/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@ima-jin/auth')>();
   return {
     ...actual,
-    authenticate: async (request: Request, options?: Parameters<typeof actual.authenticate>[1]) => {
-      const result = await actual.authenticate(request, options);
+    requireSessionOrAppToken: async (request: Request, options: Parameters<typeof actual.requireSessionOrAppToken>[1]) => {
+      const result = await actual.requireSessionOrAppToken(request, options);
       if ('error' in result || !delegation.actingFor) return result;
       return { auth: { ...result.auth, actingFor: delegation.actingFor } };
     },

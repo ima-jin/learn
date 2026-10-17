@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { createLogger } from '@ima-jin/logger';
 import { db } from '@/db';
 import { enrollments } from '@/db/schema';
-import { authenticate } from '@/lib/auth/authenticate';
+import { authenticationErrorResponse, authenticate } from '@/lib/auth/authenticate';
 import { cardRailFailure, payErrorCode } from '@/lib/card-rail';
 import { getCourseBySlug } from '@/lib/course-access';
 import { enrollStudent } from '@/lib/enrollment';
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const { slug } = await params;
 
   const authResult = await authenticate(request);
-  if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
+  if ('error' in authResult) return authenticationErrorResponse(authResult);
 
   const { auth } = authResult;
   const did = auth.did;
