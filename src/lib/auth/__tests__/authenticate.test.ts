@@ -15,6 +15,15 @@ describe('authenticate', () => {
     expect(verify?.body).toEqual({ token: 'tok:did:imajin:a', aud: 'learn' });
   });
 
+  it.each([{ did: 'did:imajin:agent' }, { cookieDid: 'did:imajin:agent' }])('never trusts an unverified X-Acting-For header: %j', async (credentials) => {
+    const result = await authenticate(makeRequest('DELETE', '/api/courses/intro', {
+      ...credentials, headers: { 'x-acting-for': 'did:imajin:owner' },
+    }));
+    expect(result).toMatchObject({ status: 403 });
+    expect(result).not.toHaveProperty('auth');
+    expect(result).not.toHaveProperty('proposal');
+  });
+
   it('rejects a token the kernel does not verify for this audience', async () => {
     const result = await authenticate(makeRequest('GET', '/x', { headers: { authorization: 'Bearer minted-for-another-app' } }));
     expect(result).toMatchObject({ status: 401 });

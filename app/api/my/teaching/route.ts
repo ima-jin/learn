@@ -3,7 +3,7 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { courses, enrollments, lessons, modules } from '@/db/schema';
 import { authenticationErrorResponse, authenticate } from '@/lib/auth/authenticate';
-import { errorResponse, jsonResponse } from '@/lib/utils';
+import { jsonResponse } from '@/lib/utils';
 
 /**
  * GET /api/my/teaching — List courses I created
