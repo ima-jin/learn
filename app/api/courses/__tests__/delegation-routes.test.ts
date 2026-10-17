@@ -140,6 +140,29 @@ describe('every classified route (#26)', () => {
   });
 });
 
+describe('delete ownership and missing-resource regressions', () => {
+  it.each(scenarios.filter((scenario) => LEARN_DELEGATION_ROUTES[scenario.key].method === 'DELETE'))(
+    '$key retains the ordinary non-delegated ownership 403',
+    async (scenario) => {
+      await seed();
+      const response = await scenario.handler(requestFor(scenario, OTHER), context());
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: 'Not authorized' });
+    },
+  );
+
+  it.each(scenarios.filter((scenario) => LEARN_DELEGATION_ROUTES[scenario.key].class === 'irreversible'))(
+    '$key returns the same proposal even when the resource does not exist',
+    async (scenario) => {
+      delegation.actingFor = CREATOR;
+      const response = await scenario.handler(requestFor(scenario, AGENT), context());
+      const expected = expectedProposal(scenario);
+      expect(response.status).toBe(403);
+      if (!expected.allowed) expect(await response.json()).toEqual(expected.body);
+      expect(await snapshot()).toEqual([[], [], [], [], []]);
+    },
+  );
+});
 describe('alternate course PATCH execution paths', () => {
   const scenario = scenarios.find((entry) => entry.key === 'learn.course.update')!;
   it.each([
