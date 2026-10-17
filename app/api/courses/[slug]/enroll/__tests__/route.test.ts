@@ -5,7 +5,9 @@ import {
   CREATOR, STUDENT, makeRequest, params, seedCourse, seedEnrollment, seedLesson, seedModule, seedTree,
 } from '@test/helpers';
 import { AUTH_URL, PAY_URL, installFakeKernel } from '@test/kernel';
+import { getAppServiceToken } from '@/lib/app-service-token';
 import { POST } from '../route';
+vi.mock('@/lib/app-service-token', () => ({ getAppServiceToken: vi.fn() }));
 
 vi.mock('@/lib/signing-identity', async () => {
   // A throwaway key generated per run — no key material is committed.
@@ -19,6 +21,9 @@ const ctx = params({ slug: 'intro' });
 const enroll = (opts: Parameters<typeof makeRequest>[2] = {}) =>
   POST(makeRequest('POST', '/api/courses/intro/enroll', opts), ctx);
 const attestations = () => kernel.calls.filter((c) => c.url === `${AUTH_URL}/api/attestations`);
+beforeEach(() => {
+  vi.mocked(getAppServiceToken).mockReset().mockResolvedValue('test-app-service-token');
+});
 
 describe('POST /api/courses/[slug]/enroll', () => {
   it('requires authentication', async () => {
@@ -115,6 +120,7 @@ describe('POST /api/courses/[slug]/enroll', () => {
 
       const checkout = kernel.calls.find((c) => c.url === `${PAY_URL}/api/checkout`);
       expect(checkout?.method).toBe('POST');
+      expect(checkout?.headers.authorization).toBe('Bearer test-app-service-token');
       expect(checkout?.body).toMatchObject({
         sellerDid: CREATOR,
         items: [{
@@ -131,6 +137,44 @@ describe('POST /api/courses/[slug]/enroll', () => {
         // `service` is what the kernel routes its paid-checkout notification (POST /api/webhook) on.
         metadata: { service: 'learn', source: 'learn', courseId: 'crs_1', studentDid: STUDENT },
       });
+    });
+    it.each(['current', 'app-service-token-required'])(
+      'opens a no-chain seller checkout against the %s kernel contract',
+      async (contract) => {
+        kernel.respond.set('/api/checkout', () => {
+          const call = kernel.calls.find((c) => c.url === `${PAY_URL}/api/checkout`);
+          if (contract === 'app-service-token-required' &&
+              call?.headers.authorization !== 'Bearer test-app-service-token') {
+            return Response.json({ error: 'Unauthorized' }, { status: 401 });
+          }
+          return Response.json({ url: 'https://pay.test/checkout/cs_test' });
+        });
+
+        // Cookie callers have no delegated app token to accidentally forward.
+        const res = await enroll({ cookieDid: STUDENT });
+        expect(res.status).toBe(200);
+        const checkout = kernel.calls.find((c) => c.url === `${PAY_URL}/api/checkout`);
+        expect(checkout?.headers.authorization).toBe('Bearer test-app-service-token');
+        expect(checkout?.body).toMatchObject({ sellerDid: CREATOR });
+        expect(checkout?.body).not.toHaveProperty('chain');
+        expect(checkout?.body).not.toHaveProperty('payeeChain');
+      },
+    );
+
+    it('fails closed on mint failure without a pay fetch, then lets a later retry succeed', async () => {
+      vi.mocked(getAppServiceToken).mockRejectedValueOnce(new Error('mint unavailable'));
+      const res = await enroll({ did: STUDENT });
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({
+        error: 'Payment authentication unavailable. Please try again shortly.',
+      });
+      expect(kernel.calls.filter((c) => c.url.startsWith(PAY_URL))).toHaveLength(0);
+      expect(await db.select().from(enrollments)).toHaveLength(0);
+
+      const retry = await enroll({ did: STUDENT });
+      expect(retry.status).toBe(200);
+      expect(kernel.calls.filter((c) => c.url === `${PAY_URL}/api/checkout`)).toHaveLength(1);
+      expect(vi.mocked(getAppServiceToken)).toHaveBeenCalledTimes(2);
     });
 
     it('never points the learner at the removed enroll callback route', async () => {
