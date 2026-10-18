@@ -9,8 +9,9 @@ import { bootstrapSigningIdentity } from '@/lib/signing-identity';
  * and is identified by its own DID. It never reads a raw private key out of
  * an env file — its signing key comes from `@ima-jin/auth-client`'s
  * `loadAppSigningKey()` keystore boot path (see #7 and docs/REGISTRATION.md).
- * Declared self-secrets are then loaded with loadFromVault before the identity
- * becomes usable. A vault failure aborts startup with a value-free /jin recovery step.
+ * createVaultBoot loads the typed in-memory config before dynamically importing
+ * application server/DB initialization and before the identity becomes usable.
+ * A vault failure aborts startup with a value-free /jin recovery step.
  * Refusing to boot on a misconfigured env catches the problem immediately
  * instead of serving requests no kernel call could ever authenticate.
  *

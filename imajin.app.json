@@ -1,6 +1,7 @@
 {
   "name": "Learn",
   "secrets": [
+    { "name": "DATABASE_URL", "kind": "operator-supplied" },
     { "name": "SESSION_SECRET", "kind": "random-32B" }
   ]
 }

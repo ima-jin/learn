@@ -7,6 +7,7 @@ import { bootstrapSelfSecrets, clearSelfSecrets, getSessionSecret, SelfSecretsUn
 import { bootstrapSigningIdentity, claimWithCode, isAppClaimed, resetSigningIdentityForTests } from '../signing-identity';
 import { register } from '../../../instrumentation';
 import manifest from '../../../imajin.app.json';
+import { mockVaultBoot } from '@test/stubs/vault-boot';
 
 const mocks = vi.hoisted(() => ({
   loadFromVault: vi.fn(),
@@ -14,9 +15,11 @@ const mocks = vi.hoisted(() => ({
   readKeystore: vi.fn(),
   cookieGet: vi.fn(),
 }));
+vi.mock('../../server', () => ({ initializeServer: vi.fn() }));
 vi.mock('@ima-jin/auth-client', async (original) => ({
   ...await original<typeof import('@ima-jin/auth-client')>(),
   ...mocks,
+  createVaultBoot: (options: Parameters<typeof mockVaultBoot>[0]) => mockVaultBoot(options, mocks.loadFromVault),
 }));
 vi.mock('next/headers', () => ({
   cookies: async () => ({ get: mocks.cookieGet }),
@@ -27,7 +30,7 @@ const FAKE_ROTATED = 'OBVIOUSLY_FAKE_SESSION_PLACEHOLDER_ROTATED';
 const FAKE_ENV = 'OBVIOUSLY_FAKE_ENV_PLACEHOLDER_IGNORED';
 const user = { did: 'did:imajin:test-user', handle: 'test-user', displayName: 'Test User', attestationId: 'test-attestation' };
 const credentials = (value = FAKE_FIRST): AppVaultCredentials => ({
-  values: { SESSION_SECRET: value }, degraded: [],
+  values: { DATABASE_URL: 'postgres://TEST_ONLY_INVALID_DATABASE/TEST_ONLY', SESSION_SECRET: value }, degraded: [],
 });
 
 beforeEach(() => {
@@ -39,6 +42,7 @@ beforeEach(() => {
   vi.stubEnv('IMAJIN_AUTH_URL', 'https://kernel.test');
   vi.stubEnv('IMAJIN_APP_KEYSTORE', '/test-only/learn.keystore.json');
   vi.stubEnv('SESSION_SECRET', undefined);
+  vi.stubEnv('DATABASE_URL', undefined);
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   mocks.readKeystore.mockReturnValue({ publicKey: 'FAKE_BOOTSTRAP_PUBLIC', privateKey: 'FAKE_BOOTSTRAP_PRIVATE' });
   mocks.loadAppSigningKey.mockResolvedValue({
@@ -166,7 +170,7 @@ describe('vault-only startup', () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const error = await register().catch((failure: unknown) => failure);
     expect(error).toBeInstanceOf(SelfSecretsUnavailableError);
-    expect((error as Error).message).toBe('SESSION_SECRET unavailable: re-sync this app on /jin, then restart. No env fallback.');
+    expect((error as Error).message).toBe(new SelfSecretsUnavailableError().message);
     expect((error as Error).message).not.toMatch(/[\r\n]/);
     expect((error as Error).cause).toBeUndefined();
     // One framework error, not a second app log or a provider error with values.
