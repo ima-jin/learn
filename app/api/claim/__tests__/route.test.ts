@@ -10,6 +10,9 @@ import { GET as health } from '../../health/route';
 import { middleware } from '../../../../middleware';
 import { NextRequest } from 'next/server';
 import * as authClient from '@ima-jin/auth-client';
+import { mockVaultBoot } from '@test/stubs/vault-boot';
+
+vi.mock('@/server', () => ({ initializeServer: vi.fn() }));
 
 const KERNEL_URL = 'https://dev-jin.imajin.test';
 const RATE_LIMIT = 5;
@@ -37,9 +40,13 @@ describe('POST /api/claim', () => {
   beforeEach(async () => {
     workDir = await mkdtemp(join(tmpdir(), 'imajin-claim-route-'));
     vi.spyOn(authClient, 'loadFromVault').mockResolvedValue({
-      values: { SESSION_SECRET: 'OBVIOUSLY_FAKE_TEST_SESSION_PLACEHOLDER' },
+      values: {
+        DATABASE_URL: 'postgres://database.invalid/TEST_ONLY_NOT_A_DATABASE',
+        SESSION_SECRET: 'OBVIOUSLY_FAKE_TEST_SESSION_PLACEHOLDER',
+      },
       degraded: [],
     });
+    vi.spyOn(authClient, 'createVaultBoot').mockImplementation((options) => mockVaultBoot(options, authClient.loadFromVault));
     vi.stubEnv('IMAJIN_KERNEL_URL', KERNEL_URL);
     vi.stubEnv('IMAJIN_APP_KEYSTORE', join(workDir, 'keystore.json'));
     vi.stubEnv('IMAJIN_APP_DID', '');

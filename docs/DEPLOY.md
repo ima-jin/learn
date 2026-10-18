@@ -19,11 +19,19 @@ needs no proxy change.
 
 ## Vault self-secret rollout order
 
+**App-code adoption only (#25): do not deploy this change or edit dev/prod env as part of this PR.**
+Production cutover, including the legacy deployment script's migration credential handoff, is coordinated
+separately in ima-jin/imajin-ai#2241. Keep imajin-ai#2260 separate. The historical CLI commands below are
+not a way to provision/copy secrets; never restore plaintext server credentials to make them run.
+
 Apply this order separately on **each environment** (dev, then prod):
 
-1. First deploy a kernel that includes **ima-jin/imajin-ai#2801** (kernel-issued, sealed app self-secrets).
+1. First deploy a kernel that includes **ima-jin/imajin-ai#2801** (kernel-issued, sealed app self-secrets)
+   and operator-supplied secrets from #2821. The app uses npmjs.org auth-client >= 0.8.24 (#2851).
 2. **Sync the manifest secrets on `/jin`** for this app from `imajin.app.json`.
-3. **Only then upgrade this app.**
+3. Use **App secrets set/rotate with owner countersign** to seal `DATABASE_URL` through the tool.
+   Keep `SESSION_SECRET` generated (`random-32B`), not operator-supplied.
+4. **Only then upgrade this app**, within the separately approved cutover.
 
 Otherwise a claimed app fails closed at boot: required vault credentials are unavailable, so startup exits
 with status 1 rather than serving with an env fallback. An unclaimed boot still skips the vault and exposes
@@ -91,10 +99,11 @@ Use `~/dev/learn` and `.env.dev.example` / `scripts/deploy.sh dev` for dev. Depl
 
 ### Operator steps this repo cannot do
 
-- **Self-secrets** — approve the names/recipes from `imajin.app.json` on `/jin`.
-  The kernel issues and seals them on provision/claim. Boot awaits `loadFromVault()` with
-  the app keystore identity; no session signing key belongs in env. For rotation or recovery,
-  use `/jin` rotate/re-sync and restart through the process tool, with no file edit.
+- **Self-secrets** — sync the names/kinds from `imajin.app.json` on `/jin`, then use
+  App secrets set/rotate with owner countersign for the operator-supplied database credential.
+  Boot awaits `createVaultBoot()` and keystore-authenticated encrypted fetch before importing
+  application server/DB initialization. No database credential or session signing key belongs
+  in env. For rotation or recovery, use the tools and restart with no secret file edit.
 
 - **Claim the app identity** — separately for dev and prod ([REGISTRATION.md](./REGISTRATION.md#minting-the-app-identity-operator-runbook)):
   register the app and configure its public `IMAJIN_APP_DID`, `NEXT_PUBLIC_IMAJIN_APP_ID` and persistent
@@ -102,8 +111,9 @@ Use `~/dev/learn` and `.env.dev.example` / `scripts/deploy.sh dev` for dev. Depl
   and `check-env` only warns. Approve provisioning on `/jin`, then open `/learn/claim` and paste the one-time
   code in the browser. The app goes live immediately and writes the `0600` keystore — no env edit or restart.
   Already-claimed apps keep using their existing keystore. No key is ever made by hand or appears in a log.
-- **Create the databases/roles** and put the connection strings in each `.env.local`. Prod/dev already contain the
-  `learn` schema and data; the baseline adopts it in place.
+- **Create the databases/roles** through the approved operator path and seal connection strings using
+  `/jin` App secrets set/rotate with owner countersign, never `.env.local`. Prod/dev already contain
+  the `learn` schema and data; baseline/migration handoff is a separate cutover step (#2241).
 - **Caddy** — the route already exists; verify it against the [snippet below](#caddy).
 
 ### One-time cutover checklist

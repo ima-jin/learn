@@ -37,8 +37,9 @@ function envNamesIn(source: string): string[] {
 
 describe('env contract coverage', () => {
   const manifest = new Set(ENV_VAR_NAMES);
-  it('declares only the session self-secret recipe and removes it from env contracts and docs', () => {
+  it('declares only names/kinds, importing the database while retaining generated session credentials', () => {
     expect(JSON.parse(read('imajin.app.json')).secrets).toEqual([
+      { name: 'DATABASE_URL', kind: 'operator-supplied' },
       { name: 'SESSION_SECRET', kind: 'random-32B' },
     ]);
     expect(ENV_VAR_NAMES).not.toContain('SESSION_SECRET');
@@ -47,11 +48,11 @@ describe('env contract coverage', () => {
       'scripts/lib/env-manifest.mjs', 'scripts/check-env.mjs',
       'README.md', 'docs/REGISTRATION.md', 'docs/DEPLOY.md', 'docs/ENVIRONMENTS.md',
     ]) {
-      expect(read(file), file).not.toContain('SESSION_SECRET');
+      expect(read(file), file).not.toMatch(/^\s*(SESSION_SECRET|WEBHOOK_SECRET)=/m);
     }
     const dependencies = JSON.parse(read('package.json')).dependencies;
     expect(dependencies['@ima-jin/auth']).toBe('0.8.18');
-    expect(dependencies['@ima-jin/auth-client']).toBe('0.8.21');
+    expect(dependencies['@ima-jin/auth-client']).toBe('0.8.24');
   });
 
   it('documents kernel-first deployment and manifest Sync separately for each environment', () => {
@@ -140,11 +141,7 @@ describe('env contract coverage', () => {
     for (const file of ['.env.example', '.env.dev.example', '.env.prod.example']) {
       const parsed = parseEnv(read(file));
       for (const variable of ENV_VARS.filter((v) => v.secret)) {
-        if (variable.name === 'DATABASE_URL') {
-          expect(parsed.DATABASE_URL, file).toContain(':CHANGE_ME@');
-        } else {
-          expect(parsed[variable.name] ?? '', `${file} ${variable.name}`).toBe('');
-        }
+        expect(parsed[variable.name] ?? '', `${file} ${variable.name}`).toBe('');
       }
     }
   });
@@ -157,7 +154,6 @@ function filled(file: string) {
     ...parseEnv(read(file)),
     IMAJIN_APP_DID: 'did:imajin:abc123',
     NEXT_PUBLIC_IMAJIN_APP_ID: 'app_abc123',
-    DATABASE_URL: 'postgres://learn:FAKE_TEST_PASSWORD@localhost:5432/imajin',
   };
 }
 
@@ -167,10 +163,9 @@ describe('validateEnv', () => {
     ['prod', '.env.prod.example'],
   ] as const)('accepts the shipped %s example apart from the placeholders', (target, file) => {
     const { errors } = validateEnv(parseEnv(read(file)), target);
-    expect(errors).toHaveLength(3);
+    expect(errors).toHaveLength(2);
     expect(errors.join('\n')).toMatch(/IMAJIN_APP_DID is still a placeholder/);
     expect(errors.join('\n')).toMatch(/NEXT_PUBLIC_IMAJIN_APP_ID is still a placeholder/);
-    expect(errors.join('\n')).toMatch(/DATABASE_URL still contains a placeholder/);
   });
 
   it('accepts a fully filled-in file for each target', () => {
@@ -226,7 +221,7 @@ describe('validateEnv', () => {
     );
     expect(errors).toMatch(/APP_DB_SCHEMA must be `learn`/);
     expect(errors).toMatch(/NEXT_PUBLIC_BASE_PATH must be \/learn/);
-    expect(errors).toMatch(/DATABASE_URL must be a postgres/);
+    expect(errors).toMatch(/DATABASE_URL must not be set/);
     expect(errors).toMatch(/must start with did:imajin:/);
     expect(errors).toMatch(/must be the registry id/);
   });
@@ -302,11 +297,12 @@ describe('check-env CLI', () => {
 
   it('exits 1 for an invalid file without echoing any value', () => {
     const file = join(dir, 'bad.env');
-    writeFileSync(file, 'DATABASE_URL=postgres://u:supersecretvalue@h/db\nIMAJIN_APP_PRIVATE_KEY=supersecretkey\n');
+    writeFileSync(file, 'DATABASE_URL=OBVIOUSLY_FAKE_LEGACY_DATABASE_VALUE\nIMAJIN_APP_PRIVATE_KEY=OBVIOUSLY_FAKE_LEGACY_PRIVATE_VALUE\n');
     const result = cli(['prod', '--file', file]);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/IMAJIN_APP_PRIVATE_KEY must not be set/);
-    expect(result.stdout + result.stderr).not.toContain('supersecret');
+    expect(result.stderr).toMatch(/DATABASE_URL must not be set/);
+    expect(result.stdout + result.stderr).not.toContain('OBVIOUSLY_FAKE_LEGACY');
   });
 
   it('exits 2 on a missing file, an unknown target, and stray arguments', () => {

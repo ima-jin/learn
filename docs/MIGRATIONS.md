@@ -17,7 +17,7 @@ Concretely, for this app:
   `auth`, `profile`, …) or another app's schema. Every interaction with kernel-owned data goes
   through the kernel's public HTTP API (`IMAJIN_AUTH_URL`), authenticated the same way any
   other caller would be — see `docs/REGISTRATION.md` and `AGENTS.md` §2.
-- `DATABASE_URL` in this app's own `.env.local` points at this app's own Postgres database (or
+- Vault-supplied `DATABASE_URL` points at this app's own Postgres database (or
   a database this app has been granted a role scoped to `APP_DB_SCHEMA` in) — never the
   kernel's database.
 - `APP_DB_SCHEMA` is set once, at registration time, and never changed afterwards. Renaming it
@@ -54,6 +54,13 @@ pnpm db:migrate                                                     # then only 
 [DEPLOY.md](./DEPLOY.md#migration-baseline).
 
 ## Workflow
+**Cutover boundary (#25):** runtime now fetches the database credential from the vault and
+never reads it from env. `drizzle.config.ts` and `scripts/migrate-baseline.mjs` retain their
+legacy env interface for isolated CI/test databases only; they are not an application boot
+fallback. Do not put server values in env files or run these legacy CLI commands on dev/prod.
+The examples below describe the CLI interface for disposable databases, not secret-provisioning
+instructions. Approved tool-backed migration handoff and production cutover are coordinated
+separately in ima-jin/imajin-ai#2241; no migration or deployment is performed by this adoption.
 
 ```bash
 pnpm db:generate   # diff src/db/schema.ts against migrations/ and write new SQL

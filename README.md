@@ -49,17 +49,15 @@ pnpm lint && pnpm typecheck && pnpm build
 2. **Register this app with the kernel** — see [`docs/REGISTRATION.md`](./docs/REGISTRATION.md).
    You'll get back this app's `appDid` and registry `id`.
 3. **Set env**: `cp .env.example .env.local`, then fill in `IMAJIN_APP_DID`,
-   `NEXT_PUBLIC_IMAJIN_APP_ID`, `APP_DB_SCHEMA`, `DATABASE_URL`, and
+   `NEXT_PUBLIC_IMAJIN_APP_ID`, `APP_DB_SCHEMA`, and
    `IMAJIN_KERNEL_URL`. This app refuses to start without `IMAJIN_APP_DID` set, or if a raw
    `IMAJIN_APP_PRIVATE_KEY` is present (see `instrumentation.ts`) — it fetches its own signing key
    at boot via `@ima-jin/auth-client`'s `loadAppSigningKey()` instead. The only claim path is *approve on `/jin` → open `<this app>/claim` → paste the code →
    done* — see [`docs/REGISTRATION.md`](./docs/REGISTRATION.md).
-4. **Migrate this app's own database** (its own Postgres schema only — see
-   [`docs/MIGRATIONS.md`](./docs/MIGRATIONS.md)):
-   ```bash
-   pnpm install
-   pnpm db:migrate
-   ```
+4. **Prepare vault credentials and this app's own database** through the operator tools:
+   sync `imajin.app.json`, then use `/jin` App secrets set/rotate with owner countersign
+   for `DATABASE_URL`. Never paste credentials into a shell or env file.
+   Migration/cutover coordination is separate — see [`docs/MIGRATIONS.md`](./docs/MIGRATIONS.md).
 5. **Run it**:
    ```bash
    pnpm dev
@@ -83,6 +81,10 @@ ever hand-made or placed in `.env.local`:
 Details in the [operator runbook](./docs/REGISTRATION.md#minting-the-app-identity-operator-runbook).
 
 ## Deploying (prod + dev)
+**Vault adoption is app code only, not authorization to deploy.** The existing deployment script's migration
+steps still require legacy CLI configuration; do not run them against a server or restore a plaintext env
+credential. Tool-backed migration handoff and production cutover are coordinated separately in
+ima-jin/imajin-ai#2241. Keep imajin-ai#2260 separate.
 
 One command per environment, from that environment's checkout on the server (`~/prod/learn`, `~/dev/learn`):
 
@@ -187,11 +189,17 @@ route (#2427) — see "This app's own signing key" below.
 ## This app's own signing key
 
 Declared self-secrets live in the vault, not env. `imajin.app.json` contains only their
-names/recipes; the kernel issues and seals them through `/jin` provision/claim.
-After signing identity bootstrap, `loadFromVault()` authenticates with the same app
-keystore and loads required credentials into memory before serving signed-in sessions.
-Use `/jin` rotate/re-sync and restart to pick up rotated values with no file edit.
-An unavailable required credential stops boot with its name and the recovery step, never its value.
+names/kinds. `DATABASE_URL` is `operator-supplied`: sync the manifest, then use `/jin`
+App secrets set/rotate with owner countersign to seal the external value. `SESSION_SECRET`
+remains `random-32B`; no imported value is required for this app-local session key.
+Current webhooks verify kernel signatures and do not consume `WEBHOOK_SECRET`; do not
+reintroduce a legacy shared secret. See the consumer audit in [ENVIRONMENTS.md](./docs/ENVIRONMENTS.md#secrets-handling).
+After signing identity bootstrap, the published SDK's `createVaultBoot()` authenticates
+encrypted fetch with the app keystore, validates every required credential, then dynamically
+imports `src/server.ts` to initialize Postgres from typed, frozen in-memory config.
+Route discovery/build and the unclaimed shell import only a DB facade, never a Postgres client.
+Use the tools and restart to pick up rotated values with no secret file edit.
+An unavailable required credential stops boot with a value-free recovery step and no env fallback.
 
 This app never reads a raw private key from env. `instrumentation.ts` fails loud at boot if
 `IMAJIN_APP_PRIVATE_KEY` is set, and instead calls `@ima-jin/auth-client`'s `loadAppSigningKey()`.
