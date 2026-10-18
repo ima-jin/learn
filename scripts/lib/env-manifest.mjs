@@ -46,9 +46,9 @@ const same = (name, status, phase, summary, value, flags) => entry(name, status,
 const unset = (name, status, phase, summary, flags) => same(name, status, phase, summary, '(unset)', flags);
 
 export const ENV_VARS = [
-  entry('DATABASE_URL', 'required', 'runtime',
-    'Postgres connection string for this app\'s own database (also read by drizzle-kit and scripts/migrate-baseline.mjs).',
-    'postgres://<role>:<password>@localhost:5432/<dev_db>', 'postgres://<role>:<password>@localhost:5432/<prod_db>', { secret: true }),
+  same('DATABASE_URL', 'forbidden', 'runtime',
+    'App boot and deployment migrations use the operator-supplied vault credential only. Never read from env.',
+    '(never set)', { secret: true }),
   same('APP_DB_SCHEMA', 'required', 'runtime',
     'The one Postgres schema this app owns. Fixed to `learn` — the existing prod/dev schema; never change it.', 'learn'),
   entry('IMAJIN_AUTH_URL', 'required', 'runtime',
@@ -286,15 +286,6 @@ function checkClaim(keystoreExists, warnings) {
   }
 }
 
-function checkDatabase(get, errors) {
-  const databaseUrl = get('DATABASE_URL');
-  if (databaseUrl !== '' && !/^postgres(ql)?:$/.test(parseUrl(databaseUrl)?.protocol ?? '')) {
-    errors.push('DATABASE_URL must be a postgres:// or postgresql:// URL.');
-  }
-  if (PLACEHOLDER.test(databaseUrl)) {
-    errors.push('DATABASE_URL still contains a placeholder password.');
-  }
-}
 
 /**
  * Pure validation of a parsed env file for a deploy target. Returns
@@ -317,7 +308,6 @@ export function validateEnv(env, target, options = {}) {
   const get = (name) => (env[name] ?? '').trim();
 
   checkPresence(get, errors);
-  checkDatabase(get, errors);
 
   checkFixedValues(get, errors);
   checkKernelHosts(get, target, errors);

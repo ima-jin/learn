@@ -17,7 +17,8 @@
 //     process env is a property of this config, not of whoever ran the last
 //     restart. Node EXITS if the file is missing — deliberate: a learn that
 //     cannot load its env must crash loudly, not boot without its identity.
-//     Secrets stay in the untracked .env.local; only its path is versioned.
+//     Only non-secret settings belong in .env.local; credentials come from
+//     the authenticated vault boot, in memory only.
 //   - `cwd` is this file's own directory, so the config is correct wherever
 //     the checkout lives and never hard-codes a user's home directory.
 const path = require('node:path');

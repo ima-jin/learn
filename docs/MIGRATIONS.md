@@ -17,7 +17,7 @@ Concretely, for this app:
   `auth`, `profile`, …) or another app's schema. Every interaction with kernel-owned data goes
   through the kernel's public HTTP API (`IMAJIN_AUTH_URL`), authenticated the same way any
   other caller would be — see `docs/REGISTRATION.md` and `AGENTS.md` §2.
-- `DATABASE_URL` in this app's own `.env.local` points at this app's own Postgres database (or
+- Vault-supplied `DATABASE_URL` points at this app's own Postgres database (or
   a database this app has been granted a role scoped to `APP_DB_SCHEMA` in) — never the
   kernel's database.
 - `APP_DB_SCHEMA` is set once, at registration time, and never changed afterwards. Renaming it
@@ -34,8 +34,8 @@ tables, ported column-for-column from the kernel's `migrations/0001_seed.sql` + 
 - `enrollments` — student ↔ course (FK → `courses`, cascade; unique `(course_id, student_did)`)
 - `lesson_progress` — per-lesson status (PK `(enrollment_id, lesson_id)`; FKs → `enrollments`, `lessons`, cascade)
 
-drizzle's own journal is kept in `learn.__drizzle_migrations` (`migrations` block in `drizzle.config.ts`), so the
-runner never creates or writes a schema other than `learn`. CI's `migrations` job runs `pnpm db:migrate` twice
+drizzle's own journal is kept in `learn.__drizzle_migrations` (configured in `scripts/migrate.mjs`), so the
+runner never creates or writes a schema other than `learn`. CI's `migrations` job runs `scripts/migrate.mjs` twice
 against an empty Postgres and asserts exactly that.
 
 ### Adopting an existing database
@@ -54,14 +54,27 @@ pnpm db:migrate                                                     # then only 
 [DEPLOY.md](./DEPLOY.md#migration-baseline).
 
 ## Workflow
+Both `scripts/migrate-baseline.mjs` and `scripts/migrate.mjs` load `DATABASE_URL` in memory
+through the published SDK's `loadFromVault()` with `IMAJIN_APP_DID`, `IMAJIN_KERNEL_URL`,
+`IMAJIN_APP_KEYSTORE`, and `{ key: 'DATABASE_URL', onMissing: 'fail' }`. The bootstrap
+keystore authenticates encrypted fetch; neither entry point reads `process.env.DATABASE_URL`.
+Missing/invalid credentials and provider/connection/cleanup failures exit 2 with a value-free
+recovery message, never a provider error or secret. Baseline schema mismatches retain exit 1.
+The same credential-free `.env.local` that passes deploy preflight works for both migration
+steps. A claimed bootstrap keystore is required; a first-run operator must establish it via
+the browser claim shell before deployment migrations. Production cutover timing remains an
+operator decision; this PR performs no live migrations or deployment.
+
+Only `MIGRATIONS_TEST_DATABASE_URL` opts out of vault fetch, for disposable CI/test databases.
+Leave it unset on servers. An empty/invalid explicit override fails closed, never falling back
+to another env credential. No signing-key exchange or claim code is needed for migration fetch.
 
 ```bash
 pnpm db:generate   # diff src/db/schema.ts against migrations/ and write new SQL
-pnpm db:migrate     # apply pending migrations in migrations/ to DATABASE_URL
-pnpm db:studio      # browse this app's own schema
+pnpm db:migrate    # load non-secret .env.local, fetch from vault, apply pending migrations
 ```
 
-`migrations/` is committed. `drizzle.config.ts` scopes `drizzle-kit` to `APP_DB_SCHEMA` only
+`migrations/` is committed. `drizzle.config.ts` is generation-only, has no `dbCredentials`, and scopes `drizzle-kit` to `APP_DB_SCHEMA` only
 (`schemaFilter`), so `pnpm db:generate` can never emit a migration for a table outside this
 app's own schema.
 

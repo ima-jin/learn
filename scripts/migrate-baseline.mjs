@@ -6,8 +6,9 @@
  *
  *   node --env-file=.env.local scripts/migrate-baseline.mjs [--dry-run]
  *
- * Reads DATABASE_URL and APP_DB_SCHEMA (default `learn`) from the environment
- * — it never reads or prints secrets itself. See docs/DEPLOY.md and
+ * Fetches DATABASE_URL from the vault using this app's bootstrap keystore.
+ * Only MIGRATIONS_TEST_DATABASE_URL opts into a disposable CI/test database.
+ * Reads non-secret APP_DB_SCHEMA (default `learn`) from env. See docs/DEPLOY.md and
  * scripts/lib/migrate-baseline-core.mjs for the full safety contract.
  *
  * Exit codes:
@@ -17,8 +18,10 @@
  *   2  usage / configuration / connection error
  */
 import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import postgres from 'postgres';
-import { BaselineMismatchError, runBaseline } from './lib/migrate-baseline-core.mjs';
+import { assertIdentifier, BaselineMismatchError, runBaseline } from './lib/migrate-baseline-core.mjs';
+import { loadMigrationDatabaseUrl } from './lib/migration-credentials.mjs';
 
 const MIGRATIONS_FOLDER = fileURLToPath(new URL('../migrations', import.meta.url));
 
@@ -29,28 +32,32 @@ const MESSAGES = {
   'would-baseline': (tag) => `Dry run: live schema matches; would record ${tag} as applied. Nothing was written.`,
 };
 
-async function main(argv) {
+/**
+ * @param {string[]} argv
+ * @param {Record<string, string | undefined>} [env]
+ */
+export async function main(argv, env = process.env) {
   const unknown = argv.filter((arg) => arg !== '--dry-run');
   if (unknown.length > 0) {
-    console.error(`Unknown argument(s): ${unknown.join(' ')}\nUsage: migrate-baseline.mjs [--dry-run]`);
+    console.error('Unknown argument. Usage: migrate-baseline.mjs [--dry-run]');
     return 2;
   }
 
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    console.error('DATABASE_URL is not set — run with `node --env-file=<env file> scripts/migrate-baseline.mjs`.');
-    return 2;
-  }
-
-  const schema = process.env.APP_DB_SCHEMA || 'learn';
-  const sql = postgres(databaseUrl, { max: 1, onnotice: () => {} });
   try {
-    const { status, tag } = await runBaseline(sql, {
-      schema,
-      migrationsFolder: MIGRATIONS_FOLDER,
-      dryRun: argv.includes('--dry-run'),
-    });
-    console.log(MESSAGES[status](tag));
+    const schema = assertIdentifier(env.APP_DB_SCHEMA || 'learn', 'APP_DB_SCHEMA');
+    const databaseUrl = await loadMigrationDatabaseUrl(env);
+    const sql = postgres(databaseUrl, { max: 1, onnotice: () => {} });
+    let result;
+    try {
+      result = await runBaseline(sql, {
+        schema,
+        migrationsFolder: MIGRATIONS_FOLDER,
+        dryRun: argv.includes('--dry-run'),
+      });
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+    console.log(MESSAGES[result.status](result.tag));
     return 0;
   } catch (error) {
     if (error instanceof BaselineMismatchError) {
@@ -58,11 +65,11 @@ async function main(argv) {
       console.error('\nNothing was changed. Do NOT force this: reconcile the schema by hand, then re-run.');
       return 1;
     }
-    console.error(`Baseline failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.error('Baseline failed: verify APP_DB_SCHEMA and the app keystore; sync/set/rotate DATABASE_URL in App secrets on /jin with owner countersign, then retry. No env fallback.');
     return 2;
-  } finally {
-    await sql.end({ timeout: 5 });
   }
 }
 
-process.exitCode = await main(process.argv.slice(2));
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = await main(process.argv.slice(2));
+}

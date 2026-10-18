@@ -4,11 +4,14 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateBootstrapKeypair, writeKeystore } from '@ima-jin/auth-client';
 import * as authClient from '@ima-jin/auth-client';
+import { mockVaultBoot } from '@test/stubs/vault-boot';
 const { vaultMock } = vi.hoisted(() => ({ vaultMock: vi.fn() }));
 vi.mock('@ima-jin/auth-client', async (original) => ({
   ...await original<typeof import('@ima-jin/auth-client')>(),
   loadFromVault: vaultMock,
+  createVaultBoot: (options: Parameters<typeof mockVaultBoot>[0]) => mockVaultBoot(options, vaultMock),
 }));
+vi.mock('../../server', () => ({ initializeServer: vi.fn() }));
 import {
   AppDidMismatchError,
   bootstrapSigningIdentity,
@@ -56,7 +59,10 @@ function useTempKeystoreDir(tmpPrefix: string): { dir: () => string } {
   beforeEach(async () => {
     workDir = await mkdtemp(join(tmpdir(), tmpPrefix));
     vaultMock.mockResolvedValue({
-      values: { SESSION_SECRET: 'OBVIOUSLY_FAKE_TEST_SESSION_PLACEHOLDER' },
+      values: {
+        DATABASE_URL: 'postgres://TEST_ONLY_INVALID_DATABASE/TEST_ONLY',
+        SESSION_SECRET: 'OBVIOUSLY_FAKE_TEST_SESSION_PLACEHOLDER',
+      },
       degraded: [],
     });
   });

@@ -1,13 +1,31 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as schema from './schema';
+import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import type * as schema from './schema';
+import { getServerConfig, type ServerConfig, SelfSecretsUnavailableError } from '../lib/self-secrets';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  throw new Error('DATABASE_URL is not set.');
+export type Database = PostgresJsDatabase<typeof schema>;
+const DATABASE_KEY = Symbol.for('imajin.learn.database');
+interface DatabaseStore {
+  [DATABASE_KEY]?: { config: Readonly<ServerConfig>; database: Database };
 }
 
-const client = postgres(connectionString, { max: 1 });
+export function installDatabase(database: Database): void {
+  (globalThis as DatabaseStore)[DATABASE_KEY] = { config: getServerConfig(), database };
+}
 
-export const db = drizzle(client, { schema });
+function initializedDatabase(): Database {
+  const config = getServerConfig();
+  const entry = (globalThis as DatabaseStore)[DATABASE_KEY];
+  if (entry?.config !== config) throw new SelfSecretsUnavailableError();
+  return entry.database;
+}
+
+// Next imports routes during builds and in the unclaimed shell. Neither may
+// construct a client. A stale database from a failed boot is also inaccessible.
+export const db = new Proxy({} as Database, {
+  get(_target, property) {
+    const database = initializedDatabase();
+    const value = Reflect.get(database, property);
+    return typeof value === 'function' ? value.bind(database) : value;
+  },
+});
 export * from './schema';

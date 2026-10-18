@@ -7,7 +7,8 @@ starts reading a variable that is not documented here.
 
 No secret values live in this repo. Examples are shape-only placeholders (`REPLACE_ME`, `CHANGE_ME`); real values
 for declared self-secrets live only in the vault and process memory. Env holds the keystore path,
-`DATABASE_URL`, kernel URLs and non-secret configuration. `check-env` rejects a file that still contains a placeholder.
+kernel URLs and non-secret configuration, never database credentials. `check-env` rejects legacy
+database credential entries and remaining registration placeholders.
 
 ## The env files
 
@@ -44,7 +45,6 @@ Missing any of these and `scripts/check-env.mjs` fails the deploy before anythin
 
 | Variable | When | Dev | Prod | What it does |
 |---|---|---|---|---|
-| `DATABASE_URL` **(secret)** | runtime | `postgres://<role>:<password>@localhost:5432/<dev_db>` | `postgres://<role>:<password>@localhost:5432/<prod_db>` | Postgres connection string for this app's own database (also read by drizzle-kit and scripts/migrate-baseline.mjs). |
 | `APP_DB_SCHEMA` | runtime | `learn` | `learn` | The one Postgres schema this app owns. Fixed to `learn` — the existing prod/dev schema; never change it. |
 | `IMAJIN_AUTH_URL` | runtime | `https://dev-jin.imajin.ai` | `https://jin.imajin.ai` | Kernel base URL (no path) the session helpers use for sign-in/session validation. |
 | `AUTH_SERVICE_URL` | runtime | `https://dev-jin.imajin.ai/auth` | `https://jin.imajin.ai/auth` | Kernel auth service base URL, including the /auth prefix. Verifies scoped app tokens and receives learn.* attestations. |
@@ -91,6 +91,7 @@ Setting any of these is an error.
 
 | Variable | When | Dev | Prod | What it does |
 |---|---|---|---|---|
+| `DATABASE_URL` **(secret)** | runtime | (never set) | (never set) | App boot and deployment migrations fetch the operator-supplied vault credential in memory, never from env. |
 | `IMAJIN_APP_PRIVATE_KEY` **(secret)** | runtime | (never set) | (never set) | Removed. The app throws at boot if this is set — the signing key comes from loadAppSigningKey(), never from env. |
 
 ## Set by the platform — not in the env file
@@ -146,7 +147,7 @@ NEXT_PUBLIC_DOMAIN=imajin.ai
 # MUST be `dev` here: selects the imajin_session_dev cookie.
 IMAJIN_ENV=dev
 
-DATABASE_URL=postgres://learn:CHANGE_ME@localhost:5432/imajin_dev
+# DATABASE_URL is loaded from the vault, never set in env.
 APP_DB_SCHEMA=learn
 
 IMAJIN_AUTH_URL=https://dev-jin.imajin.ai
@@ -190,7 +191,7 @@ NEXT_PUBLIC_DOMAIN=imajin.ai
 # IMAJIN_ENV is deliberately NOT set on prod (prod uses the imajin_session
 # cookie). check-env.mjs rejects IMAJIN_ENV=dev here.
 
-DATABASE_URL=postgres://learn:CHANGE_ME@localhost:5432/imajin_prod
+# DATABASE_URL is loaded from the vault, never set in env.
 APP_DB_SCHEMA=learn
 
 IMAJIN_AUTH_URL=https://jin.imajin.ai
@@ -212,14 +213,34 @@ LOG_LEVEL=info
 
 ## Secrets handling
 
-- Self-secrets are declared in `imajin.app.json`, issued and sealed by the kernel on
-  provision/claim, then fetched by `loadFromVault()` with the app keystore identity.
-  Boot awaits them before sessions can be signed; they remain in memory only. Use
-  `/jin` rotate/re-sync, then restart through the process tool to pick up the current
-  value without an env edit. Missing credentials or an unreachable vault stop boot;
-  the error names the credential and `/jin` re-sync/restart, never a value. No env fallback.
-
-- `DATABASE_URL` is the only permitted secret-bearing env variable. Claim codes are submitted only in the browser, never through env. Keep `.env.local` mode `0600`, owned by the deploy user, never in git.
+- **Consumer audit (main at 8deb467, #25):** `src/db/index.ts` constructed Postgres at module
+  load from env; it now exposes only a fail-closed facade. The delayed `src/server.ts` imports
+  `src/db/client.ts`, which reads the initialized typed config, not env. `DATABASE_URL` must
+  preserve the external database/role binding, so its manifest kind is `operator-supplied`.
+  `SESSION_SECRET` is an app-local cookie key used by `src/lib/auth-config.ts`; its existing
+  `random-32B` kind needs no imported value, including on dev. `src/lib/auth/kernel-webhook.ts`
+  verifies kernel signatures: there is no current `WEBHOOK_SECRET` consumer. Do not adopt
+  a legacy shared-secret scheme. The historical shell-generated dev webhook value must not
+  be copied; any re-issuance remains an operator-only tool step, not part of this code change.
+- **Operator handoff (not performed by this PR):** sync name/kind-only declarations from
+  `imajin.app.json` separately per environment, then use `/jin` **App secrets set/rotate**
+  with **owner countersign** to tool-seal the database value. Never include a value in
+  commands, shell sessions, logs, responses, fixtures or env files. Keep generated kinds
+  for keys that need no imported value.
+- `createVaultBoot()` (published auth-client >= 0.8.24) performs keystore-authenticated,
+  encrypted `loadFromVault()` fetch and validates all required credentials before its callback
+  dynamically imports application server/DB initialization. The SDK's frozen typed config is
+  shared in memory across Next server bundles. Missing/invalid credentials, tampering or an
+  unavailable vault abort boot with one value-free `/jin` sync/set/rotate/restart recovery message.
+  There is no env fallback. Builds and the unclaimed shell never initialize Postgres.
+- Restart through the process tool after rotation to fetch current values without a secret
+  file edit. Local sessions signed with the old generated session key no longer verify.
+- No secret-bearing runtime env variable is permitted. Claim codes are submitted only in the
+  browser, never through env. Keep the non-secret `.env.local` mode `0600`, owned by the deploy
+  user, never in git. Both migration entry points use the app's claimed keystore and encrypted
+  `loadFromVault()` fetch. Only the explicit `MIGRATIONS_TEST_DATABASE_URL` switch selects
+  a disposable CI/test database instead; leave it unset on servers. Production cutover timing
+  is an operator decision, and imajin-ai#2260 remains separate. This PR changes no running dev/prod environment.
 - This app's signing key is **never** in an env file — `IMAJIN_APP_PRIVATE_KEY` makes the app refuse to boot. The key
   is fetched at boot by `loadAppSigningKey()`; only the 0600 bootstrap keystore (`IMAJIN_APP_KEYSTORE`) is
   persisted. Treat that file like the claim code: never commit, copy, or sync it (`.imajin/` is git-ignored).

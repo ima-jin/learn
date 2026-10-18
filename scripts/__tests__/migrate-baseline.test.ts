@@ -437,22 +437,22 @@ describe('migrate-baseline CLI configuration errors (no database needed)', () =>
   const cli = (env: Record<string, string>, args: string[] = []) =>
     spawnSync(process.execPath, [CLI, ...args], { env: childEnv(env), encoding: 'utf8' });
 
-  it('exits 2 when DATABASE_URL is missing', () => {
+  it('exits 2 when vault credentials are unavailable, without an env fallback', () => {
     const result = cli({});
     expect(result.status).toBe(2);
-    expect(result.stderr).toMatch(/DATABASE_URL is not set/);
+    expect(result.stderr).toMatch(/No env fallback/);
   });
 
   it('exits 2 on an unknown argument', () => {
-    const result = cli({ DATABASE_URL: 'postgres://127.0.0.1:1/x' }, ['--force']);
+    const result = cli({}, ['--force']);
     expect(result.status).toBe(2);
     expect(result.stderr).toMatch(/Unknown argument/);
   });
 
   it('exits 2 on an unsafe APP_DB_SCHEMA before touching the database', () => {
-    const result = cli({ DATABASE_URL: 'postgres://127.0.0.1:1/x', APP_DB_SCHEMA: 'x; DROP SCHEMA y' });
+    const result = cli({ APP_DB_SCHEMA: 'x; DROP SCHEMA y' });
     expect(result.status).toBe(2);
-    expect(result.stderr).toMatch(/APP_DB_SCHEMA must match/);
+    expect(result.stderr).toMatch(/verify APP_DB_SCHEMA/);
   });
 });
 
@@ -496,8 +496,8 @@ describe.skipIf(!databaseUrl)('migrate-baseline CLI against a real Postgres', ()
   it('exits 0 on baseline, then 0 again (idempotent), without echoing the connection string', async () => {
     await seedProdLike();
 
-    const first = cli({ DATABASE_URL: url });
-    const second = cli({ DATABASE_URL: url });
+    const first = cli({ MIGRATIONS_TEST_DATABASE_URL: url });
+    const second = cli({ MIGRATIONS_TEST_DATABASE_URL: url });
 
     expect(first.status).toBe(0);
     expect(first.stdout).toMatch(/Baselined: recorded 0000_/);
@@ -513,7 +513,7 @@ describe.skipIf(!databaseUrl)('migrate-baseline CLI against a real Postgres', ()
     await seedProdLike();
     await sql.unsafe('ALTER TABLE learn.courses DROP COLUMN description');
 
-    const result = cli({ DATABASE_URL: url });
+    const result = cli({ MIGRATIONS_TEST_DATABASE_URL: url });
 
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/Refusing to baseline/);
@@ -524,7 +524,7 @@ describe.skipIf(!databaseUrl)('migrate-baseline CLI against a real Postgres', ()
   it('--dry-run exits 0 and writes nothing', async () => {
     await seedProdLike();
 
-    const result = cli({ DATABASE_URL: url }, ['--dry-run']);
+    const result = cli({ MIGRATIONS_TEST_DATABASE_URL: url }, ['--dry-run']);
 
     expect(result.status).toBe(0);
     expect(result.stdout).toMatch(/Dry run/);
@@ -532,7 +532,7 @@ describe.skipIf(!databaseUrl)('migrate-baseline CLI against a real Postgres', ()
   });
 
   it('treats a database with no learn schema as fresh', () => {
-    const result = cli({ DATABASE_URL: url });
+    const result = cli({ MIGRATIONS_TEST_DATABASE_URL: url });
     expect(result.status).toBe(0);
     expect(result.stdout).toMatch(/Fresh database/);
   });
