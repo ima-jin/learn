@@ -1,30 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import { defineConfig } from 'drizzle-kit';
 
-// drizzle-kit runs outside Next.js, so .env.local isn't auto-loaded — load it
-// here rather than adding a `dotenv` dependency just for this one CLI path.
+// Generation only: deployment migrations use scripts/migrate.mjs and the vault.
+// Only schema selection is needed to generate SQL; never load credentials.
 const envPath = '.env.local';
-if (existsSync(envPath)) {
-  for (const line of readFileSync(envPath, 'utf-8').split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIndex = trimmed.indexOf('=');
-    if (eqIndex <= 0) continue;
-    const key = trimmed.slice(0, eqIndex).trim();
-    if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) continue;
-    if (process.env[key]) continue;
-    let value = trimmed.slice(eqIndex + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    process.env[key] = value;
-  }
-}
-
-const appSchemaName = process.env.APP_DB_SCHEMA;
+const fileSchema = existsSync(envPath) ? parseEnv(readFileSync(envPath, 'utf-8')).APP_DB_SCHEMA : undefined;
+const appSchemaName = process.env.APP_DB_SCHEMA || fileSchema;
 if (!appSchemaName) {
   throw new Error('APP_DB_SCHEMA is not set — see .env.example and docs/MIGRATIONS.md.');
 }
@@ -33,17 +15,5 @@ export default defineConfig({
   schema: './src/db/schema.ts',
   out: './migrations',
   dialect: 'postgresql',
-  dbCredentials: {
-    url: process.env.DATABASE_URL!,
-  },
   schemaFilter: [appSchemaName],
-  // Keep drizzle's own migration journal inside this app's schema too. The
-  // default (`drizzle.__drizzle_migrations`) would write to a shared `drizzle`
-  // schema, i.e. outside the one schema this app owns (docs/MIGRATIONS.md).
-  // drizzle-kit creates this schema (CREATE SCHEMA IF NOT EXISTS) before the
-  // journal table, and migration 0000 creates it as well.
-  migrations: {
-    schema: appSchemaName,
-    table: '__drizzle_migrations',
-  },
 });

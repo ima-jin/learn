@@ -93,7 +93,7 @@ describe('vault-only startup', () => {
     ];
     await register();
     expect(console.warn).toHaveBeenCalledOnce();
-    expect(console.warn).toHaveBeenCalledWith('SESSION_SECRET is ignored; it is issued by the kernel vault. Delete it from the env file.');
+    expect(console.warn).toHaveBeenCalledWith('SESSION_SECRET is ignored; it is sealed in the vault. Delete it from the env file.');
     expect(JSON.stringify(logs.flatMap((log) => log.mock.calls))).not.toContain(FAKE_ENV);
     expect(authConfig.secret).toBe(FAKE_FIRST);
     expect(process.env.SESSION_SECRET).toBe(FAKE_ENV);
@@ -109,7 +109,7 @@ describe('vault-only startup', () => {
     mocks.readKeystore.mockReturnValue(null);
     await register();
     expect(console.warn).toHaveBeenCalledOnce();
-    expect(console.warn).toHaveBeenCalledWith('SESSION_SECRET is ignored; it is issued by the kernel vault. Delete it from the env file.');
+    expect(console.warn).toHaveBeenCalledWith('SESSION_SECRET is ignored; it is sealed in the vault. Delete it from the env file.');
     expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain(FAKE_ENV);
     expect(mocks.loadFromVault).not.toHaveBeenCalled();
     expect(isAppClaimed()).toBe(false);

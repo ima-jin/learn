@@ -58,7 +58,6 @@ jobs:
           --health-retries 10
     env:
       APP_DB_SCHEMA: learn
-      DATABASE_URL: postgres://postgres@localhost:5432/learn_ci
       MIGRATIONS_TEST_DATABASE_URL: postgres://postgres@localhost:5432/learn_ci
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -70,8 +69,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Run migrations (twice — must be idempotent)
         run: |
-          pnpm db:migrate
-          pnpm db:migrate
+          node scripts/migrate.mjs
+          node scripts/migrate.mjs
       - name: Verify schema, tables and constraints
         run: pnpm exec vitest run src/db/__tests__/migrations.integration.test.ts
       - name: Baseline CLI against a prod-shaped schema (real Postgres)

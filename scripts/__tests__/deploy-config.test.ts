@@ -107,7 +107,7 @@ describe('scripts/deploy.sh', () => {
       'node_modules/next/dist/bin/next build',
       '[6/8] migration baseline',
       'scripts/migrate-baseline.mjs',
-      'node_modules/drizzle-kit/bin.cjs migrate',
+      'scripts/migrate.mjs',
       '[7/8] restart',
       `pm2 startOrReload ecosystem.config.cjs --only ${name} --update-env`,
       'pm2 save',
@@ -126,15 +126,15 @@ describe('scripts/deploy.sh', () => {
   it('loads the env file for build, baseline and migrate (NEXT_PUBLIC_* baked at build time)', () => {
     const { stdout } = deploy(['prod', '--dry-run']);
     const envFile = `--env-file=${join(ROOT, '.env.local')}`;
-    for (const marker of ['next/dist/bin/next build', 'scripts/migrate-baseline.mjs', 'drizzle-kit/bin.cjs migrate']) {
-      expect(stdout).toContain(`${envFile} node_modules/${marker}`.replace('node_modules/scripts', 'scripts'));
+    for (const marker of ['node_modules/next/dist/bin/next build', 'scripts/migrate-baseline.mjs', 'scripts/migrate.mjs']) {
+      expect(stdout).toContain(`${envFile} ${marker}`);
     }
   });
 
   it('baselines before migrating and migrates before restarting', () => {
     const { stdout } = deploy(['prod', '--dry-run']);
-    expect(stdout.indexOf('migrate-baseline.mjs')).toBeLessThan(stdout.indexOf('drizzle-kit/bin.cjs migrate'));
-    expect(stdout.indexOf('drizzle-kit/bin.cjs migrate')).toBeLessThan(stdout.indexOf('pm2 startOrReload'));
+    expect(stdout.indexOf('migrate-baseline.mjs')).toBeLessThan(stdout.indexOf('scripts/migrate.mjs'));
+    expect(stdout.indexOf('scripts/migrate.mjs')).toBeLessThan(stdout.indexOf('pm2 startOrReload'));
   });
 
   it('honours --ref (also the rollback path)', () => {

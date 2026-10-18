@@ -57,7 +57,7 @@ pnpm lint && pnpm typecheck && pnpm build
 4. **Prepare vault credentials and this app's own database** through the operator tools:
    sync `imajin.app.json`, then use `/jin` App secrets set/rotate with owner countersign
    for `DATABASE_URL`. Never paste credentials into a shell or env file.
-   Migration/cutover coordination is separate — see [`docs/MIGRATIONS.md`](./docs/MIGRATIONS.md).
+   Both baseline and migrations fetch the credential from the vault — see [`docs/MIGRATIONS.md`](./docs/MIGRATIONS.md).
 5. **Run it**:
    ```bash
    pnpm dev
@@ -81,10 +81,10 @@ ever hand-made or placed in `.env.local`:
 Details in the [operator runbook](./docs/REGISTRATION.md#minting-the-app-identity-operator-runbook).
 
 ## Deploying (prod + dev)
-**Vault adoption is app code only, not authorization to deploy.** The existing deployment script's migration
-steps still require legacy CLI configuration; do not run them against a server or restore a plaintext env
-credential. Tool-backed migration handoff and production cutover are coordinated separately in
-ima-jin/imajin-ai#2241. Keep imajin-ai#2260 separate.
+**Vault adoption is app code only, not authorization to deploy.** Baseline and migration scripts fetch
+`DATABASE_URL` in memory using the app's claimed bootstrap keystore. The same non-secret settings file
+works for deploy preflight, migrations and runtime; no plaintext database env credential is needed.
+Production cutover timing remains a separate operator decision. Keep imajin-ai#2260 separate.
 
 One command per environment, from that environment's checkout on the server (`~/prod/learn`, `~/dev/learn`):
 

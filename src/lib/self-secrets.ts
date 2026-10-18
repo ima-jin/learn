@@ -27,7 +27,7 @@ export function clearSelfSecrets(): void {
 export function warnIgnoredSelfSecretEnv(): void {
   for (const { name } of manifest.secrets) {
     if (Object.hasOwn(process.env, name)) {
-      console.warn(`${name} is ignored; it is issued by the kernel vault. Delete it from the env file.`);
+      console.warn(`${name} is ignored; it is sealed in the vault. Delete it from the env file.`);
     }
   }
 }

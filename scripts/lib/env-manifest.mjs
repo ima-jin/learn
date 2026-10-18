@@ -47,7 +47,7 @@ const unset = (name, status, phase, summary, flags) => same(name, status, phase,
 
 export const ENV_VARS = [
   same('DATABASE_URL', 'forbidden', 'runtime',
-    'Runtime uses the operator-supplied vault credential only. Legacy migration CLI/CI env support is not a server boot fallback.',
+    'App boot and deployment migrations use the operator-supplied vault credential only. Never read from env.',
     '(never set)', { secret: true }),
   same('APP_DB_SCHEMA', 'required', 'runtime',
     'The one Postgres schema this app owns. Fixed to `learn` — the existing prod/dev schema; never change it.', 'learn'),

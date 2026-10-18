@@ -91,7 +91,7 @@ Setting any of these is an error.
 
 | Variable | When | Dev | Prod | What it does |
 |---|---|---|---|---|
-| `DATABASE_URL` **(secret)** | runtime | (never set) | (never set) | Operator-supplied vault credential only. Legacy migration CLI/CI env support is not a server boot fallback; migration cutover is separate (#2241). |
+| `DATABASE_URL` **(secret)** | runtime | (never set) | (never set) | App boot and deployment migrations fetch the operator-supplied vault credential in memory, never from env. |
 | `IMAJIN_APP_PRIVATE_KEY` **(secret)** | runtime | (never set) | (never set) | Removed. The app throws at boot if this is set — the signing key comes from loadAppSigningKey(), never from env. |
 
 ## Set by the platform — not in the env file
@@ -237,9 +237,10 @@ LOG_LEVEL=info
   file edit. Local sessions signed with the old generated session key no longer verify.
 - No secret-bearing runtime env variable is permitted. Claim codes are submitted only in the
   browser, never through env. Keep the non-secret `.env.local` mode `0600`, owned by the deploy
-  user, never in git. Legacy migration CLI env inputs are isolated CI/test interfaces only;
-  do not use server values there. Deployment/migration cutover is separate in imajin-ai#2241,
-  and imajin-ai#2260 remains separate. This PR changes no running dev/prod environment.
+  user, never in git. Both migration entry points use the app's claimed keystore and encrypted
+  `loadFromVault()` fetch. Only the explicit `MIGRATIONS_TEST_DATABASE_URL` switch selects
+  a disposable CI/test database instead; leave it unset on servers. Production cutover timing
+  is an operator decision, and imajin-ai#2260 remains separate. This PR changes no running dev/prod environment.
 - This app's signing key is **never** in an env file — `IMAJIN_APP_PRIVATE_KEY` makes the app refuse to boot. The key
   is fetched at boot by `loadAppSigningKey()`; only the 0600 bootstrap keystore (`IMAJIN_APP_KEYSTORE`) is
   persisted. Treat that file like the claim code: never commit, copy, or sync it (`.imajin/` is git-ignored).

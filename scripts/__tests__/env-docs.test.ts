@@ -65,6 +65,16 @@ describe('env contract coverage', () => {
     expect(section.indexOf('Sync the manifest secrets')).toBeLessThan(section.indexOf('Only then upgrade this app'));
     expect(section).toContain('a claimed app fails closed at boot');
   });
+  it('documents vault-backed migrations and intentional names-only webhook audit text', () => {
+    expect(read('docs/ENVIRONMENTS.md')).toContain('there is no current `WEBHOOK_SECRET` consumer');
+    for (const file of ['README.md', 'docs/DEPLOY.md', 'docs/MIGRATIONS.md', 'docs/ENVIRONMENTS.md']) {
+      expect(read(file), file).not.toContain('#2241');
+    }
+    expect(read('docs/DEPLOY.md')).toContain('scripts/migrate.mjs');
+    expect(read('docs/MIGRATIONS.md')).toContain('neither entry point reads `process.env.DATABASE_URL`');
+    expect(read('drizzle.config.ts')).not.toContain('dbCredentials');
+    expect(JSON.parse(read('package.json')).scripts['db:migrate']).toContain('scripts/migrate.mjs');
+  });
   it('keeps IMAJIN_APP_CLAIM_CODE absent outside tests asserting its removal or ignored behavior', () => {
     const files = spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim().split('\n');
     const assertionFiles = new Set([

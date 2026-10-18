@@ -20,9 +20,9 @@ needs no proxy change.
 ## Vault self-secret rollout order
 
 **App-code adoption only (#25): do not deploy this change or edit dev/prod env as part of this PR.**
-Production cutover, including the legacy deployment script's migration credential handoff, is coordinated
-separately in ima-jin/imajin-ai#2241. Keep imajin-ai#2260 separate. The historical CLI commands below are
-not a way to provision/copy secrets; never restore plaintext server credentials to make them run.
+Production cutover timing remains a separate operator decision; keep imajin-ai#2260 separate.
+The baseline and migration entry points below fetch the database credential directly from the vault.
+Never put it in the settings file, a shell command/session, or an SSH transfer.
 
 Apply this order separately on **each environment** (dev, then prod):
 
@@ -64,9 +64,9 @@ scripts/deploy.sh prod --dry-run      # print the plan, execute nothing
 ```
 
 It is fail-fast: any failure before step 7 stops the deploy and the running process keeps serving the previous
-build. The env file is the single source of truth: contract variables exported in the calling shell are ignored
-(and listed by name), because `node --env-file` and `pm2 --update-env` would otherwise let a stray `DATABASE_URL`
-win. Step 2 swaps in the new ref's `deploy.sh`, so a change to the script itself takes effect from the *next* run.
+build. The env file holds non-secret settings only: contract variables exported in the calling shell are ignored
+(and listed by name). `DATABASE_URL` is forbidden in that file and is never a migration fallback.
+Step 2 swaps in the new ref's `deploy.sh`, so a change to the script itself takes effect from the *next* run.
 
 1. **preflight** — `git`, `node` (>= `.nvmrc`), `pnpm`, `pm2`, `curl` on `PATH`; no local changes to tracked files;
    `.env.local` exists; no stale `pm2` entry of the same name pointing at a different path (see
@@ -74,23 +74,29 @@ win. Step 2 swaps in the new ref's `deploy.sh`, so a change to the script itself
 2. **checkout** — `git fetch --tags --prune`, then `git checkout --detach` the ref (default `origin/main`). Never
    `git pull`.
 3. **env check** — `scripts/check-env.mjs <target>` validates `.env.local` for the target (names only, never
-   values). A missing keystore only warns; claim at `/learn/claim` after boot. See [ENVIRONMENTS.md](./ENVIRONMENTS.md).
+   values). A missing keystore warns, but migration step 6 requires it: use the unclaimed browser-claim
+   shell to establish it before running deployment migrations. See [ENVIRONMENTS.md](./ENVIRONMENTS.md).
 4. **install** — `pnpm install --frozen-lockfile`.
 5. **build** — `next build` with `.env.local` loaded, so `NEXT_PUBLIC_*` values are baked in.
 6. **baseline + migrate** — `scripts/migrate-baseline.mjs` (idempotent; refuses on mismatch), then
-   `drizzle-kit migrate` (forward-only). See [Migration baseline](#migration-baseline).
+   `scripts/migrate.mjs` (programmatic Drizzle postgres-js migrator, forward-only). Both load the
+   same non-secret env file as step 3 and fetch `DATABASE_URL` in memory using `loadFromVault()`,
+   with `IMAJIN_APP_DID`, `IMAJIN_KERNEL_URL`, `IMAJIN_APP_KEYSTORE` and `onMissing: 'fail'`.
+   They need the app's existing claimed bootstrap keystore; a missing/refused credential stops deployment
+   before restart with a value-free recovery message. See [Migration baseline](#migration-baseline).
 7. **restart** — `pm2 startOrReload ecosystem.config.cjs --only <prod|dev>-learn --update-env`, then `pm2 save`.
 8. **health** — polls `/learn/api/health` for up to 60 s and requires `"status":"ok"`. A non-healthy result exits
    non-zero.
 
 ## First deploy of an environment (fresh checkout)
 
-There is no checkout of this repo on the server yet. After the operator steps below are done, it is one command per
-environment:
+There is no checkout of this repo on the server yet. Prepare the checkout/settings, then complete the operator
+claim prerequisite below before running the deployment command:
 
 ```bash
 git clone https://github.com/ima-jin/learn.git ~/prod/learn && cd ~/prod/learn
 cp .env.prod.example .env.local && chmod 600 .env.local   # then fill in the placeholders
+# Establish the bootstrap keystore through the browser claim shell first.
 scripts/deploy.sh prod
 ```
 
@@ -107,13 +113,14 @@ Use `~/dev/learn` and `.env.dev.example` / `scripts/deploy.sh dev` for dev. Depl
 
 - **Claim the app identity** — separately for dev and prod ([REGISTRATION.md](./REGISTRATION.md#minting-the-app-identity-operator-runbook)):
   register the app and configure its public `IMAJIN_APP_DID`, `NEXT_PUBLIC_IMAJIN_APP_ID` and persistent
-  `IMAJIN_APP_KEYSTORE` path. Deploy through the deployment tool; without a keystore the app boots unclaimed
-  and `check-env` only warns. Approve provisioning on `/jin`, then open `/learn/claim` and paste the one-time
-  code in the browser. The app goes live immediately and writes the `0600` keystore — no env edit or restart.
+  `IMAJIN_APP_KEYSTORE` path. A missing keystore permits only the unclaimed application shell, not migrations.
+  First start that shell through the approved process tool, approve provisioning on `/jin`, then open
+  `/learn/claim` and paste the one-time code in the browser. Claim writes the `0600` keystore — no secret env edit.
+  The deployment's baseline/migrate step can then authenticate with it before restarting the app.
   Already-claimed apps keep using their existing keystore. No key is ever made by hand or appears in a log.
 - **Create the databases/roles** through the approved operator path and seal connection strings using
   `/jin` App secrets set/rotate with owner countersign, never `.env.local`. Prod/dev already contain
-  the `learn` schema and data; baseline/migration handoff is a separate cutover step (#2241).
+  the `learn` schema and data; the vault-backed baseline and migrator adopt/apply this repo's history.
 - **Caddy** — the route already exists; verify it against the [snippet below](#caddy).
 
 ### One-time cutover checklist
@@ -137,10 +144,16 @@ fail on the first table. `scripts/migrate-baseline.mjs` bridges that, using this
 ```bash
 node --env-file=.env.local scripts/migrate-baseline.mjs            # baseline (what deploy.sh runs)
 node --env-file=.env.local scripts/migrate-baseline.mjs --dry-run  # validate only, write nothing
+node --env-file=.env.local scripts/migrate.mjs                   # apply pending migrations
 ```
 
-- **Idempotent.** The ledger is drizzle's own journal, `"learn"."__drizzle_migrations"` (the `migrations` block in
-  `drizzle.config.ts`) — one row per applied migration, keyed by the SHA-256 of its SQL file. If migration 0000 is
+- **Vault-backed.** Both entry points use `scripts/lib/migration-credentials.mjs` and the published SDK's
+  keystore-authenticated encrypted fetch of the required `DATABASE_URL`. Values remain in memory, never env
+  or disk. No `process.env.DATABASE_URL` lookup or fallback exists. Provider/connection/cleanup errors are
+  sanitized; use `/jin` App secrets sync/set/rotate with owner countersign before retrying.
+  `MIGRATIONS_TEST_DATABASE_URL` is an explicit disposable CI/test override only; leave it unset on servers.
+- **Idempotent.** The ledger is drizzle's own journal, `"learn"."__drizzle_migrations"` (configured explicitly in
+  `scripts/migrate.mjs`) — one row per applied migration, keyed by the SHA-256 of its SQL file. If migration 0000 is
   already recorded the runner does nothing and exits 0, so `deploy.sh` runs it every time.
 - **Refuses on mismatch.** It introspects the live `learn` schema (tables, columns, types, nullability, defaults,
   primary/unique keys, foreign keys and their actions, required indexes) and compares it with what migration 0000
@@ -152,10 +165,11 @@ node --env-file=.env.local scripts/migrate-baseline.mjs --dry-run  # validate on
   read or written. The only writes are `CREATE SCHEMA/TABLE IF NOT EXISTS` for the journal and one `INSERT` of the
   0000 hash, in one transaction under an advisory lock. The tests audit every statement issued.
 - **Fresh databases** (no `learn` schema) are left alone: it reports "nothing to baseline" and exits 0, and
-  `drizzle-kit migrate` then creates everything.
+  `scripts/migrate.mjs` then creates everything.
 - Exit codes: `0` ok · `1` refused (mismatch) · `2` usage/config/connection error.
 
-After the baseline, `drizzle-kit migrate` applies only migrations newer than 0000. Migrations are forward-only; there
+After the baseline, `scripts/migrate.mjs` applies only migrations newer than 0000. `drizzle.config.ts` is used
+only by `pnpm db:generate` and contains no connection credential. Migrations are forward-only; there
 is no down-migration. New migrations must be additive/guarded (`IF NOT EXISTS`) — see [MIGRATIONS.md](./MIGRATIONS.md).
 
 ## pm2

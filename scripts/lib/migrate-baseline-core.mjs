@@ -10,8 +10,8 @@
  *
  * The fix is a *baseline*: prove the live schema is what migration 0000 would
  * have produced, then record 0000 as already applied in drizzle's own
- * tracking table (`"learn"."__drizzle_migrations"`, see drizzle.config.ts) so
- * `drizzle-kit migrate` only runs what comes after it. That tracking table is
+ * tracking table (`"learn"."__drizzle_migrations"`, see scripts/migrate.mjs) so
+ * `scripts/migrate.mjs` only runs what comes after it. That tracking table is
  * this runner's `_migrations` ledger: which migrations are applied, by hash.
  *
  * Safety contract (enforced by tests in scripts/__tests__/):
